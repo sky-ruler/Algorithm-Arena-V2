@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Card from '../components/Card'; // Assuming you have this component
+import { api } from '../lib/api';
 
 const Dashboard = () => {
   const [challenges, setChallenges] = useState([]);
@@ -10,16 +10,10 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchChallenges = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/challenges');
-        
-        if (!res.ok) throw new Error('Failed to fetch challenges');
-        
-        const data = await res.json();
-        // Our API returns { success: true, data: [...] }
-        setChallenges(data.data || []); 
+        const res = await api.get('/api/challenges');
+        setChallenges(res.data.data || []);
       } catch (err) {
-        console.error("Dashboard Error:", err);
-        setError(err.message);
+        setError(err.response?.data?.message || 'Failed to fetch challenges');
       } finally {
         setLoading(false);
       }
@@ -47,19 +41,15 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-8">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6">
         <div>
           <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-accent to-purple-500">
             Mission Control
           </h1>
-          <p className="text-secondary mt-2">
-            Welcome back, Pilot. Choose your next challenge.
-          </p>
+          <p className="text-secondary mt-2">Welcome back, Pilot. Choose your next challenge.</p>
         </div>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="macos-glass p-6">
           <h3 className="text-secondary text-sm font-semibold uppercase">Total Challenges</h3>
@@ -75,31 +65,39 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Challenges Grid */}
       <h2 className="text-2xl font-semibold mt-10 mb-4">Available Missions</h2>
-      
+
       {challenges.length === 0 ? (
-        <div className="text-center py-10 text-secondary">
-          No challenges available. Ask Admin to seed the database!
-        </div>
+        <div className="text-center py-10 text-secondary">No challenges available. Ask admin to seed the database.</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {challenges.map((challenge) => (
             <Link key={challenge._id} to={`/challenge/${challenge._id}`} className="group">
               <div className="macos-glass p-6 hover:border-accent transition-all duration-300 transform hover:-translate-y-1">
                 <div className="flex justify-between items-start mb-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold 
-                    ${challenge.difficulty === 'Easy' ? 'bg-green-500/20 text-green-500' : 
-                      challenge.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-500' : 
-                      'bg-red-500/20 text-red-500'}`}>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      challenge.difficulty === 'Easy'
+                        ? 'bg-green-500/20 text-green-500'
+                        : challenge.difficulty === 'Medium'
+                          ? 'bg-yellow-500/20 text-yellow-500'
+                          : 'bg-red-500/20 text-red-500'
+                    }`}
+                  >
                     {challenge.difficulty}
                   </span>
                   <span className="text-secondary text-sm">{challenge.points} XP</span>
                 </div>
-                <h3 className="text-xl font-bold group-hover:text-accent transition-colors">
-                  {challenge.title}
-                </h3>
-                <p className="text-secondary text-sm mt-2 line-clamp-2">
+                <h3 className="text-xl font-bold group-hover:text-accent transition-colors">{challenge.title}</h3>
+                <p
+                  className="text-secondary text-sm mt-2"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
                   {challenge.description}
                 </p>
               </div>

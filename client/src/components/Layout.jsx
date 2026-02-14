@@ -15,7 +15,7 @@ const Layout = ({ onLogout }) => {
       <Navbar onLogout={onLogout} />
 
       {/* 3. Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-500">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* <Outlet /> is where Dashboard, Profile, etc. will appear.
             Now they sit beautifully under the Navbar.
         */}

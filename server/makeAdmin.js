@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const User = require('./src/models/User');
+const User = require('./models/User');
 require('dotenv').config();
 
 const dns = require('dns');
@@ -19,7 +19,7 @@ mongoose.connect(process.env.MONGO_URI)
     const user = await User.findOneAndUpdate(
       { email: targetEmail.toLowerCase().trim() },
       { role: 'admin' },
-      { returnDocument: 'after' } // The modern way to get the updated user
+      { returnDocument: 'after' }
     );
 
     if (user) {

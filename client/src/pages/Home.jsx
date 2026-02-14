@@ -45,7 +45,7 @@ const Home = () => {
 
       {/* Hero Section */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-4 py-20">
-        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+        <div className="max-w-4xl mx-auto space-y-8 ">
           
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-bold tracking-wider uppercase backdrop-blur-md">
             <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
@@ -148,7 +148,7 @@ const Home = () => {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 py-10 text-center">
         <p className="text-sm text-secondary">
-          © 2026 Algorithm Arena. Built for <span className="text-primary font-semibold">GDG On Campus • SOA ITER</span>.
+          Copyright 2026 Algorithm Arena. Built for <span className="text-primary font-semibold">GDG On Campus - SOA ITER</span>.
         </p>
       </footer>
 

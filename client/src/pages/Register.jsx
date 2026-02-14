@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { FiUser, FiMail, FiLock, FiCpu, FiArrowRight } from 'react-icons/fi';
+import { Link, useNavigate } from 'react-router-dom';
+import { FiArrowRight, FiCpu, FiLock, FiMail, FiUser } from 'react-icons/fi';
 import Card from '../components/Card';
+import { api } from '../lib/api';
 
 const Register = () => {
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
@@ -20,23 +21,10 @@ const Register = () => {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        // Auto-login after register is often better UX, or redirect to login
-        // Here we redirect to login to keep it simple and secure
-        navigate('/login');
-      } else {
-        setError(data.message || 'Registration failed');
-      }
+      await api.post('/api/auth/register', formData);
+      navigate('/login');
     } catch (err) {
-      setError('Server connection failed. Please try again.');
+      setError(err.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -44,28 +32,24 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Ambience */}
       <div className="cosmos-background absolute inset-0 z-0">
         <div className="orb orb-1 opacity-50"></div>
         <div className="orb orb-2 opacity-50"></div>
       </div>
 
-      <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 group mb-4">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-accent to-purple-500 flex items-center justify-center shadow-lg shadow-accent/20">
               <FiCpu className="text-white text-xl" />
             </div>
-            <span className="font-bold text-2xl tracking-tight text-primary">
-              AlgoArena
-            </span>
+            <span className="font-bold text-2xl tracking-tight text-primary">AlgoArena</span>
           </Link>
           <h2 className="text-xl font-medium text-secondary">Join the ranks.</h2>
         </div>
 
         <Card className="shadow-2xl shadow-black/5 backdrop-blur-2xl">
           <form onSubmit={handleSubmit} className="space-y-6">
-            
             {error && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
@@ -73,11 +57,8 @@ const Register = () => {
               </div>
             )}
 
-            {/* Username Field */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">
-                Codename (Username)
-              </label>
+              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Codename (Username)</label>
               <div className="relative group">
                 <FiUser className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -92,11 +73,8 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Email Field */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">
-                Email Address
-              </label>
+              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Email Address</label>
               <div className="relative group">
                 <FiMail className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -111,11 +89,8 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Password Field */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">
-                Password
-              </label>
+              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Password</label>
               <div className="relative group">
                 <FiLock className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input

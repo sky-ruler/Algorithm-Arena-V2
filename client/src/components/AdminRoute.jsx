@@ -1,31 +1,34 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode'; // This is the tool you just installed!
 
-const AdminRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  
-  if (!token) {
-    // No token? Send them back to login
-    return <Navigate to="/login" />;
+const getStoredUser = () => {
+  const raw = localStorage.getItem('user');
+  if (!raw) {
+    return null;
   }
 
   try {
-    const decoded = jwtDecode(token);
-    
-    // Check if the role inside the token is "admin"
-    if (decoded.role !== 'admin') {
-      // Not an admin? Send them to the player dashboard
-      return <Navigate to="/dashboard" />;
-    }
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
 
-    // If everything is fine, show the AdminPanel
-    return children;
-  } catch (error) {
-    // If the token is invalid or expired
+const AdminRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const user = getStoredUser();
+
+  if (!token || !user) {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     return <Navigate to="/login" />;
   }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
 };
 
 export default AdminRoute;
