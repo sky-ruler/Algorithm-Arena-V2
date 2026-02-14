@@ -20,7 +20,11 @@
   --accent-glow: rgba(0, 122, 255, 0.25);
   
   /* Glass Recipe */
+<<<<<<< HEAD
   --glass-surface: rgba(255, 255, 255, 0.7);
+=======
+  --glass-surface: rgba(255, 255, 255, 0.5);
+>>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   --glass-border-color: rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
   
@@ -56,9 +60,15 @@ body {
   font-family: var(--font-stack);
   color: var(--fg-primary);
   background-color: var(--bg-app);
+<<<<<<< HEAD
   min-height: 100vh;
   transition: background-color 0.4s ease, color 0.4s ease;
   -webkit-font-smoothing: antialiased;
+=======
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+  -webkit-font-smoothing: antialiased; /* Crisper text */
+>>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   -moz-osx-font-smoothing: grayscale;
 }
 
@@ -93,7 +103,11 @@ body {
   border-radius: 50%;
   filter: blur(80px);
   z-index: -1;
+<<<<<<< HEAD
   will-change: transform;
+=======
+  will-change: transform; /* Performance optimization */
+>>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   animation: float 25s infinite alternate ease-in-out;
 }
 
@@ -116,6 +130,7 @@ body {
 }
 
 /* --- UTILITIES --- */
+/* The "Glass" Utility Class used by components */
 .macos-glass {
   background: var(--glass-surface);
   backdrop-filter: blur(20px) saturate(120%);
