@@ -1,99 +1,75 @@
 import React from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
+import { Link, useLocation } from 'react-router-dom';
+import { 
+  FiHome, FiGrid, FiAward, FiUser, FiSettings, FiLogOut, FiCpu 
+} from 'react-icons/fi';
+import { clsx } from 'clsx'; // Helper for cleaner classes
 
 const Navbar = ({ onLogout }) => {
-  const navigate = useNavigate();
   const location = useLocation();
-  const token = localStorage.getItem('token');
-  
-  let isAdmin = false;
-  if (token) {
-    try {
-      const decoded = jwtDecode(token);
-      isAdmin = decoded.role === 'admin';
-    } catch (e) {
-      console.error("Invalid token");
-    }
-  }
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    onLogout();
-    navigate('/login');
-  };
-
-  // Helper for active link styles
-  const getLinkStyle = (path) => ({
-    color: location.pathname === path ? 'var(--accent-color)' : 'var(--text-secondary)',
-    fontWeight: location.pathname === path ? '700' : '500',
-    textDecoration: 'none',
-    transition: 'color 0.2s ease'
-  });
+  const navItems = [
+    { name: 'Mission Control', path: '/dashboard', icon: FiGrid },
+    { name: 'Leaderboard', path: '/leaderboard', icon: FiAward },
+    { name: 'Profile', path: '/profile', icon: FiUser },
+    // { name: 'Admin Panel', path: '/admin', icon: FiCpu, adminOnly: true }, 
+    // You can uncomment above if you want to show it conditionally
+  ];
 
   return (
-    <nav style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      background: 'var(--glass-bg)', // Uses your global glass variable
-      backdropFilter: 'blur(20px)',  // Strong blur for the Apple header look
-      WebkitBackdropFilter: 'blur(20px)',
-      borderBottom: '1px solid var(--glass-border)',
-      padding: '1rem 2rem',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-        <Link to="/dashboard" style={{ 
-          fontSize: '1.5rem', 
-          fontWeight: '800', 
-          background: 'linear-gradient(to right, #007AFF, #00C7BE)', 
-          WebkitBackgroundClip: 'text', 
-          WebkitTextFillColor: 'transparent',
-          textDecoration: 'none'
-        }}>
-          Algorithm Arena
-        </Link>
-
-        {/* Desktop Links */}
-        <div style={{ display: 'flex', gap: '1.5rem' }} className="hidden md:flex">
-          <Link to="/dashboard" style={getLinkStyle('/dashboard')}>Challenges</Link>
-          <Link to="/leaderboard" style={getLinkStyle('/leaderboard')}>Leaderboard</Link>
-          <Link to="/profile" style={getLinkStyle('/profile')}>My Profile</Link>
-          {isAdmin && (
-            <Link to="/admin" style={{ color: '#34C759', fontWeight: '600', textDecoration: 'none' }}>
-              Creator Studio
-            </Link>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        {token ? (
-          <button 
-            onClick={handleLogout}
-            style={{
-              background: 'rgba(255, 59, 48, 0.1)', // Soft red background
-              color: '#FF3B30', // Apple Red
-              border: '1px solid rgba(255, 59, 48, 0.2)',
-              padding: '8px 16px',
-              borderRadius: '20px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            Logout
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <Link to="/login" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: '600', padding: '8px 0' }}>Login</Link>
-            <Link to="/register" className="btn-primary" style={{ textDecoration: 'none', padding: '8px 20px' }}>Sign Up</Link>
+    <aside className="w-64 h-screen hidden md:flex flex-col border-r border-white/10 bg-sidebar backdrop-blur-xl relative z-20">
+      {/* 1. Logo Section */}
+      <div className="h-20 flex items-center px-8 border-b border-white/10">
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-purple-500 flex items-center justify-center shadow-lg group-hover:shadow-accent/50 transition-all duration-300">
+            <FiCpu className="text-white text-lg" />
           </div>
-        )}
+          <span className="font-bold text-xl tracking-tight text-primary group-hover:text-accent transition-colors">
+            AlgoArena
+          </span>
+        </Link>
       </div>
-    </nav>
+
+      {/* 2. Navigation Links */}
+      <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={clsx(
+                'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group',
+                isActive 
+                  ? 'bg-accent text-white shadow-lg shadow-accent/25' 
+                  : 'text-secondary hover:bg-white/5 hover:text-primary'
+              )}
+            >
+              <Icon className={clsx('text-xl', isActive ? 'text-white' : 'text-secondary group-hover:text-accent')} />
+              <span className="font-medium">{item.name}</span>
+              
+              {/* Active Indicator Dot */}
+              {isActive && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* 3. User & Logout Section */}
+      <div className="p-4 border-t border-white/10">
+        <button 
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-all duration-300 group"
+        >
+          <FiLogOut className="text-xl group-hover:-translate-x-1 transition-transform" />
+          <span className="font-medium">Disconnect</span>
+        </button>
+      </div>
+    </aside>
   );
 };
 

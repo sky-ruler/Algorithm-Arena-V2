@@ -1,99 +1,112 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { Link } from 'react-router-dom';
-import Card from '../components/Card';
+import Card from '../components/Card'; // Assuming you have this component
 
 const Dashboard = () => {
   const [challenges, setChallenges] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchChallenges = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/challenges');
-        setChallenges(res.data);
+        const res = await fetch('http://localhost:5000/api/challenges');
+        
+        if (!res.ok) throw new Error('Failed to fetch challenges');
+        
+        const data = await res.json();
+        // Our API returns { success: true, data: [...] }
+        setChallenges(data.data || []); 
       } catch (err) {
-        console.error("Failed to fetch challenges");
+        console.error("Dashboard Error:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
     };
+
     fetchChallenges();
   }, []);
 
-  return (
-    <div>
-      <header style={{ marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px' }}>
-          Challenges
-        </h1>
-        <p style={{ color: 'var(--fg-secondary)', fontSize: '15px' }}>
-          Select a protocol to begin your assessment.
-        </p>
-      </header>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-xl text-accent animate-pulse">Loading Mission Data...</div>
+      </div>
+    );
+  }
 
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
-        gap: '24px' 
-      }}>
-        {challenges.length > 0 ? (
-          challenges.map((challenge) => (
-            <Link 
-              to={`/challenge/${challenge._id}`} 
-              key={challenge._id} 
-              style={{ textDecoration: 'none', color: 'inherit' }}
-            >
-              <Card className="hover-scale">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <span style={{ 
-                    fontSize: '11px', 
-                    fontWeight: '700', 
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    color: challenge.difficulty === 'Easy' ? 'var(--accent-green)' : 
-                           challenge.difficulty === 'Medium' ? 'var(--accent-orange)' : 'var(--accent-red)'
-                  }}>
+  if (error) {
+    return (
+      <div className="text-red-500 text-center mt-10">
+        <h2 className="text-2xl font-bold">Connection Lost</h2>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6">
+        <div>
+          <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-accent to-purple-500">
+            Mission Control
+          </h1>
+          <p className="text-secondary mt-2">
+            Welcome back, Pilot. Choose your next challenge.
+          </p>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="macos-glass p-6">
+          <h3 className="text-secondary text-sm font-semibold uppercase">Total Challenges</h3>
+          <p className="text-3xl font-bold mt-1">{challenges.length}</p>
+        </div>
+        <div className="macos-glass p-6">
+          <h3 className="text-secondary text-sm font-semibold uppercase">Solved</h3>
+          <p className="text-3xl font-bold mt-1 text-green-500">0</p>
+        </div>
+        <div className="macos-glass p-6">
+          <h3 className="text-secondary text-sm font-semibold uppercase">Global Rank</h3>
+          <p className="text-3xl font-bold mt-1 text-accent">#42</p>
+        </div>
+      </div>
+
+      {/* Challenges Grid */}
+      <h2 className="text-2xl font-semibold mt-10 mb-4">Available Missions</h2>
+      
+      {challenges.length === 0 ? (
+        <div className="text-center py-10 text-secondary">
+          No challenges available. Ask Admin to seed the database!
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {challenges.map((challenge) => (
+            <Link key={challenge._id} to={`/challenge/${challenge._id}`} className="group">
+              <div className="macos-glass p-6 hover:border-accent transition-all duration-300 transform hover:-translate-y-1">
+                <div className="flex justify-between items-start mb-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold 
+                    ${challenge.difficulty === 'Easy' ? 'bg-green-500/20 text-green-500' : 
+                      challenge.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-500' : 
+                      'bg-red-500/20 text-red-500'}`}>
                     {challenge.difficulty}
                   </span>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--fg-tertiary)' }}>
-                    {challenge.points} PTS
-                  </span>
+                  <span className="text-secondary text-sm">{challenge.points} XP</span>
                 </div>
-
-                <h3 style={{ fontSize: '19px', fontWeight: '600', marginBottom: '8px', lineHeight: '1.3' }}>
+                <h3 className="text-xl font-bold group-hover:text-accent transition-colors">
                   {challenge.title}
                 </h3>
-                
-                <p style={{ 
-                  color: 'var(--fg-secondary)', 
-                  fontSize: '14px', 
-                  lineHeight: '1.5', 
-                  marginBottom: '24px',
-                  display: '-webkit-box',
-                  WebkitLineClamp: '2',
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
-                }}>
+                <p className="text-secondary text-sm mt-2 line-clamp-2">
                   {challenge.description}
                 </p>
-                
-                <div style={{ 
-                  fontSize: '13px', 
-                  fontWeight: '600', 
-                  color: 'var(--accent-blue)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  Start Challenge <span>→</span>
-                </div>
-              </Card>
+              </div>
             </Link>
-          ))
-        ) : (
-          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: 'var(--fg-tertiary)' }}>
-            No challenges available.
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

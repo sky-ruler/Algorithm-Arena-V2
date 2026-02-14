@@ -1,74 +1,91 @@
-// src/controllers/authController.js
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// 1. REGISTER A NEW USER
-exports.register = async (req, res) => {
+// Utility: Generate JWT Token
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '30d',
+  });
+};
+
+// @desc    Register new user
+// @route   POST /api/auth/register
+// @access  Public
+exports.register = async (req, res, next) => {
   try {
     const { username, email, password } = req.body;
 
-    // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    // Hash the password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create and save user
-    user = new User({
+    // Create user (Model pre-save hook handles hashing)
+    const user = await User.create({
       username,
       email,
-      password: hashedPassword,
+      password,
     });
 
-    await user.save();
-
-    res.status(201).json({ message: 'User registered successfully! 🎮' });
+    res.status(201).json({
+      success: true,
+      _id: user._id,
+      username: user.username,
+      role: user.role,
+      token: generateToken(user._id),
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Server Error', error: err.message });
+    // Pass duplicate key errors (E11000) to the global handler
+    if (err.code === 11000) {
+      res.status(400);
+      err.message = 'User already exists';
+    }
+    next(err);
   }
 };
 
-// 2. LOGIN USER (We will build this fully in the next step)
-// 2. LOGIN USER
-exports.login = async (req, res) => {
+// @desc    Authenticate a user
+// @route   POST /api/auth/login
+// @access  Public
+exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Check if user exists in the database
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid Credentials' });
+    // Check for email and password
+    if (!email || !password) {
+      res.status(400);
+      throw new Error('Please provide an email and password');
     }
 
-    // 2. Compare the typed password with the hashed password in DB
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid Credentials' });
+    // Check for user
+    // We verify the password using the method in the User model
+    // We explicitly select '+password' because it's hidden by default
+    const user = await User.findOne({ email }).select('+password');
+
+    if (user && (await user.matchPassword(password))) {
+      res.json({
+        success: true,
+        _id: user._id,
+        username: user.username,
+        role: user.role,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401);
+      throw new Error('Invalid credentials');
     }
-
-    // 3. If everything is correct, create a "Security Token" (JWT)
-    // This is like a VIP pass for your Algorithm Arena site
-    const token = jwt.sign(
-      { userId: user._id,
-        role: user.role
-      }, 
-      process.env.JWT_SECRET, // Use the secret from .env
-      { expiresIn: '1h' }
-    );
-
-    res.json({ 
-      token, 
-      message: 'Login successful! 🚀',
-      username: user.username,
-      role: user.role
-    });
-
   } catch (err) {
-    res.status(500).json({ message: 'Server Error', error: err.message });
+    next(err);
+  }
+};
+
+// @desc    Get current logged in user
+// @route   GET /api/auth/me
+// @access  Private
+exports.getMe = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (err) {
+    next(err);
   }
 };

@@ -1,31 +1,41 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// 1. Guard: Are you logged in?
-const verifyToken = (req, res, next) => {
-  const token = req.headers['authorization'];
-  if (!token) return res.status(403).json({ message: 'No token provided' });
+// 🛡️ Guard: Protect routes for logged-in users
+exports.protect = async (req, res, next) => {
+  let token;
 
-  try {
-    const decoded = jwt.verify(token.split(" ")[1], process.env.JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-};
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    try {
+      // Get token from header (Format: "Bearer <token>")
+      token = req.headers.authorization.split(' ')[1];
 
-// 2. Guard: Are you an Admin?
-const isAdmin = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.userId);
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access Denied: Admins Only 🛡️' });
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Get user from the token (exclude password)
+      req.user = await User.findById(decoded.id).select('-password');
+
+      next();
+    } catch (error) {
+      console.error(error);
+      res.status(401).json({ message: 'Not authorized, token failed' });
     }
-    next();
-  } catch (err) {
-    res.status(500).json({ message: 'Server Error checking role' });
+  }
+
+  if (!token) {
+    res.status(401).json({ message: 'Not authorized, no token' });
   }
 };
 
-module.exports = { verifyToken, isAdmin };
+// 🛡️ Guard: Admin only access
+exports.admin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(401).json({ message: 'Not authorized as an admin' });
+  }
+};
