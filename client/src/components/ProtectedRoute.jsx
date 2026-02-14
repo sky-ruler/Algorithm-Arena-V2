@@ -1,16 +1,21 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
+import LoadingScreen from './LoadingScreen';
 
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  
-  // If no token exists, redirect to login
-  if (!token) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingScreen label="Restoring session..." />;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" />;
   }
 
-  // If token exists, let them in!
   return children;
 };
 
 export default ProtectedRoute;
+

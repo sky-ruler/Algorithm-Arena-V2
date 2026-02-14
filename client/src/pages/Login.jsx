@@ -1,46 +1,56 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiArrowRight, FiCpu, FiLock, FiMail } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import Card from '../components/Card';
 import { api } from '../lib/api';
+import { useAuth } from '../context/useAuth';
 
 const Login = ({ onLoginSuccess }) => {
   const [formData, setFormData] = useState({ email: '', password: '' });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
+
+  const isValid = useMemo(() => {
+    return formData.email.trim().length > 0 && formData.password.length > 0;
+  }, [formData]);
+
+  const validate = () => {
+    const nextErrors = {};
+    if (!formData.email.trim()) nextErrors.email = 'Email is required';
+    if (!formData.password) nextErrors.password = 'Password is required';
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    setError('');
+    setErrors((prev) => ({ ...prev, [e.target.name]: '' }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
+
     setLoading(true);
-    setError('');
 
     try {
       const res = await api.post('/api/auth/login', formData);
-      const data = res.data;
+      const payload = res.data?.data;
 
-      localStorage.setItem('token', data.token);
-      localStorage.setItem(
-        'user',
-        JSON.stringify({
-          id: data._id,
-          username: data.username,
-          role: data.role,
-        })
-      );
+      login(payload);
 
       if (typeof onLoginSuccess === 'function') {
         onLoginSuccess();
       }
 
+      toast.success('Welcome back');
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid credentials');
+      toast.error(err.userMessage || 'Invalid credentials');
+      setErrors({ form: err.userMessage || 'Invalid credentials' });
     } finally {
       setLoading(false);
     }
@@ -65,16 +75,16 @@ const Login = ({ onLoginSuccess }) => {
         </div>
 
         <Card className="shadow-2xl shadow-black/5 backdrop-blur-2xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
+          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+            {errors.form && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                {error}
+                {errors.form}
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Email Address</label>
+              <label className="field-label">Email Address</label>
               <div className="relative group">
                 <FiMail className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -85,12 +95,14 @@ const Login = ({ onLoginSuccess }) => {
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
                   placeholder="name@example.com"
+                  aria-invalid={Boolean(errors.email)}
                 />
               </div>
+              {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Password</label>
+              <label className="field-label">Password</label>
               <div className="relative group">
                 <FiLock className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -101,13 +113,15 @@ const Login = ({ onLoginSuccess }) => {
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
                   placeholder="********"
+                  aria-invalid={Boolean(errors.password)}
                 />
               </div>
+              {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !isValid}
               className="w-full py-3.5 rounded-xl bg-accent hover:bg-accent-glow text-white font-bold transition-all shadow-lg shadow-accent/25 hover:shadow-accent/40 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -138,3 +152,4 @@ const Login = ({ onLoginSuccess }) => {
 };
 
 export default Login;
+

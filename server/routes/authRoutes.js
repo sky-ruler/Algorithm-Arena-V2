@@ -1,11 +1,14 @@
 const express = require('express');
 const { register, login, getMe } = require('../controllers/authController');
-const { protect } = require('../middleware/auth'); // We will refine this file next!
+const { protect } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const { registerSchema, loginSchema } = require('../validators/authSchemas');
 
 const router = express.Router();
 
-router.post('/register', register);
-router.post('/login', login);
-router.get('/me', protect, getMe); // 🔒 The "Persistence" Route
+router.post('/register', validate(registerSchema), register);
+router.post('/login', validate(loginSchema), login);
+router.get('/me', protect, getMe);
 
 module.exports = router;
+

@@ -2,9 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiCpu, FiCode, FiTrendingUp, FiZap, FiArrowRight } from 'react-icons/fi';
 import Card from '../components/Card';
+import { useAuth } from '../context/useAuth';
 
 const Home = () => {
-  const isLoggedIn = !!localStorage.getItem('token');
+  const { isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white">
@@ -26,7 +27,7 @@ const Home = () => {
             </span>
         </div>
         <div className="flex gap-4 items-center">
-          {isLoggedIn ? (
+          {isAuthenticated ? (
             <Link to="/dashboard" className="px-6 py-2.5 rounded-full bg-accent hover:bg-accent-glow text-white font-semibold text-sm transition-all shadow-lg shadow-accent/25 hover:shadow-accent/40 hover:-translate-y-0.5">
               Go to Dashboard
             </Link>
@@ -65,15 +66,15 @@ const Home = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
-            <Link 
-              to={isLoggedIn ? "/dashboard" : "/register"} 
+              <Link 
+              to={isAuthenticated ? "/dashboard" : "/register"} 
               className="group px-8 py-4 rounded-full bg-accent text-white font-bold text-lg transition-all shadow-xl shadow-accent/30 hover:shadow-accent/50 hover:-translate-y-1 flex items-center justify-center gap-2"
             >
-              {isLoggedIn ? 'Resume Coding' : 'Start Coding Now'}
+              {isAuthenticated ? 'Resume Coding' : 'Start Coding Now'}
               <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
             </Link>
             
-            {!isLoggedIn && (
+            {!isAuthenticated && (
                <Link 
                to="/login"
                className="px-8 py-4 rounded-full bg-glass-surface border border-glass-border text-primary font-bold text-lg hover:bg-white/10 transition-all backdrop-blur-md"
@@ -157,3 +158,4 @@ const Home = () => {
 };
 
 export default Home;
+

@@ -22,4 +22,10 @@ const submissionSchema = new mongoose.Schema({
   submittedAt: { type: Date, default: Date.now }
 });
 
+submissionSchema.index({ userId: 1, submittedAt: -1 });
+submissionSchema.index({ challengeId: 1, submittedAt: -1 });
+submissionSchema.index({ status: 1, submittedAt: -1 });
+submissionSchema.index({ userId: 1, challengeId: 1, status: 1, submittedAt: -1 });
+
 module.exports = mongoose.model('Submission', submissionSchema);
+

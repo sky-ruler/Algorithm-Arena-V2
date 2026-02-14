@@ -1,30 +1,20 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-
-const getStoredUser = () => {
-  const raw = localStorage.getItem('user');
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
+import { useAuth } from '../context/useAuth';
+import LoadingScreen from './LoadingScreen';
 
 const AdminRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  const user = getStoredUser();
+  const { isAuthenticated, role, loading } = useAuth();
 
-  if (!token || !user) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  if (loading) {
+    return <LoadingScreen label="Checking permissions..." />;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" />;
   }
 
-  if (user.role !== 'admin') {
+  if (role !== 'admin') {
     return <Navigate to="/dashboard" />;
   }
 
@@ -32,3 +22,4 @@ const AdminRoute = ({ children }) => {
 };
 
 export default AdminRoute;
+

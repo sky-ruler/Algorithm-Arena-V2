@@ -1,31 +1,33 @@
 const express = require('express');
 const router = express.Router();
 
-// --- 1. Import Controller Functions ---
-// This file focuses ONLY on Challenges
-const { 
-  getChallenges, 
-  getChallengeById, 
-  createChallenge, 
-  updateChallenge, 
-  deleteChallenge 
+const {
+  getChallenges,
+  getChallengeById,
+  createChallenge,
+  updateChallenge,
+  deleteChallenge,
 } = require('../controllers/challengeController');
 
-// --- 2. Import Middleware ---
-// Using the refined names we created in middleware/auth.js
 const { protect, admin } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const {
+  challengeIdParamsSchema,
+  challengeCreateSchema,
+  challengeUpdateSchema,
+  challengeQuerySchema,
+} = require('../validators/challengeSchemas');
 
-// --- 3. Route Definitions ---
+router
+  .route('/')
+  .get(validate(challengeQuerySchema), getChallenges)
+  .post(protect, admin, validate(challengeCreateSchema), createChallenge);
 
-// Route: /api/challenges
-router.route('/')
-  .get(getChallenges)                   // Public: For everyone to see the list
-  .post(protect, admin, createChallenge); // Admin Only: Create new challenges
-
-// Route: /api/challenges/:id
-router.route('/:id')
-  .get(getChallengeById)                // Public: View details of a specific problem
-  .put(protect, admin, updateChallenge) // Admin Only: Update existing problems
-  .delete(protect, admin, deleteChallenge); // Admin Only: Remove problems
+router
+  .route('/:id')
+  .get(validate(challengeIdParamsSchema), getChallengeById)
+  .put(protect, admin, validate(challengeIdParamsSchema), validate(challengeUpdateSchema), updateChallenge)
+  .delete(protect, admin, validate(challengeIdParamsSchema), deleteChallenge);
 
 module.exports = router;
+

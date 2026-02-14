@@ -1,29 +1,32 @@
+const mongoose = require('mongoose');
 const Submission = require('../models/Submission');
 const Challenge = require('../models/Challenge');
+const { sendSuccess } = require('../utils/response');
+const { logAudit } = require('../utils/audit');
 
 const VALID_STATUSES = ['Pending', 'Accepted', 'Rejected'];
 
-// @desc    Submit code for a challenge
-// @route   POST /api/submissions
-// @access  Private
-exports.submitCode = async (req, res, next) => {
+const submitCode = async (req, res, next) => {
   try {
     const { challengeId, repositoryUrl, code, language } = req.body;
-
-    if (!challengeId) {
-      res.status(400);
-      throw new Error('challengeId is required');
-    }
-
-    if (!repositoryUrl && !code) {
-      res.status(400);
-      throw new Error('Please provide code or a repository URL');
-    }
 
     const challenge = await Challenge.findById(challengeId);
     if (!challenge) {
       res.status(404);
       throw new Error('Challenge not found');
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const pendingDuplicate = await Submission.findOne({
+      userId: req.user.id,
+      challengeId,
+      status: 'Pending',
+      submittedAt: { $gte: oneHourAgo },
+    });
+
+    if (pendingDuplicate) {
+      res.status(429);
+      throw new Error('You already have a pending submission for this challenge. Please wait for review.');
     }
 
     const submission = await Submission.create({
@@ -34,61 +37,108 @@ exports.submitCode = async (req, res, next) => {
       language: language || 'javascript',
     });
 
-    res.status(201).json({
-      success: true,
+    return sendSuccess(res, {
+      statusCode: 201,
       data: submission,
+      message: 'Submission created successfully',
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Get all submissions (Admin / Teacher View)
-// @route   GET /api/submissions
-// @access  Private/Admin
-exports.getSubmissions = async (req, res, next) => {
+const getSubmissions = async (req, res, next) => {
   try {
-    const submissions = await Submission.find()
-      .populate('userId', 'username email role')
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      challengeId,
+      userId,
+      from,
+      to,
+      sortBy = 'submittedAt',
+      sortDir = 'desc',
+    } = req.query;
+
+    const filter = {};
+    if (status) filter.status = status;
+    if (challengeId) filter.challengeId = challengeId;
+    if (userId) filter.userId = userId;
+
+    if (from || to) {
+      filter.submittedAt = {};
+      if (from) filter.submittedAt.$gte = new Date(from);
+      if (to) filter.submittedAt.$lte = new Date(to);
+    }
+
+    const skip = (page - 1) * limit;
+    const sort = { [sortBy]: sortDir === 'asc' ? 1 : -1 };
+
+    const [total, submissions] = await Promise.all([
+      Submission.countDocuments(filter),
+      Submission.find(filter)
+        .populate('userId', 'username email role')
+        .populate('challengeId', 'title difficulty points')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+    ]);
+
+    return sendSuccess(res, {
+      data: submissions,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const getMySubmissions = async (req, res, next) => {
+  try {
+    const filter = { userId: req.user.id };
+    if (req.query.challengeId) filter.challengeId = req.query.challengeId;
+    if (req.query.status) filter.status = req.query.status;
+
+    let query = Submission.find(filter)
       .populate('challengeId', 'title difficulty points')
       .sort({ submittedAt: -1 });
 
-    res.status(200).json({
-      success: true,
-      count: submissions.length,
+    if (req.query.limit) {
+      query = query.limit(Number(req.query.limit));
+    }
+
+    const submissions = await query;
+
+    return sendSuccess(res, {
       data: submissions,
+      meta: {
+        count: submissions.length,
+      },
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Get current user's submissions
-// @route   GET /api/submissions/my-submissions
-// @access  Private
-exports.getMySubmissions = async (req, res, next) => {
+const getLeaderboard = async (req, res, next) => {
   try {
-    const submissions = await Submission.find({ userId: req.user.id })
-      .populate('challengeId', 'title difficulty points')
-      .sort({ submittedAt: -1 });
+    const { window = 'all', page = 1, limit = 20 } = req.query;
 
-    res.status(200).json({
-      success: true,
-      count: submissions.length,
-      data: submissions,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
+    const match = { status: 'Accepted' };
+    if (window !== 'all') {
+      const days = window === '7d' ? 7 : 30;
+      const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      match.submittedAt = { $gte: fromDate };
+    }
 
-// @desc    Get leaderboard
-// @route   GET /api/submissions/leaderboard
-// @access  Private
-exports.getLeaderboard = async (req, res, next) => {
-  try {
-    const leaderboard = await Submission.aggregate([
-      { $match: { status: 'Accepted' } },
+    const pipeline = [
+      { $match: match },
       {
         $lookup: {
           from: 'challenges',
@@ -123,21 +173,48 @@ exports.getLeaderboard = async (req, res, next) => {
           totalPoints: 1,
         },
       },
-    ]);
+    ];
 
-    res.status(200).json({
-      success: true,
-      data: leaderboard,
+    const full = await Submission.aggregate(pipeline);
+    const ranked = [];
+    let prevRank = 0;
+    let prevPoints = null;
+    let prevSolved = null;
+
+    full.forEach((entry, idx) => {
+      const isTie = prevPoints === entry.totalPoints && prevSolved === entry.solvedCount;
+      const rank = isTie ? prevRank : idx + 1;
+
+      prevRank = rank;
+      prevPoints = entry.totalPoints;
+      prevSolved = entry.solvedCount;
+
+      ranked.push({
+        ...entry,
+        rank,
+      });
+    });
+
+    const total = ranked.length;
+    const start = (page - 1) * limit;
+    const data = ranked.slice(start, start + limit);
+
+    return sendSuccess(res, {
+      data,
+      meta: {
+        window,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Get single submission details
-// @route   GET /api/submissions/:id
-// @access  Private (Owner/Admin)
-exports.getSubmissionById = async (req, res, next) => {
+const getSubmissionById = async (req, res, next) => {
   try {
     const submission = await Submission.findById(req.params.id)
       .populate('userId', 'username email role')
@@ -156,19 +233,13 @@ exports.getSubmissionById = async (req, res, next) => {
       throw new Error('Not authorized to view this submission');
     }
 
-    res.status(200).json({
-      success: true,
-      data: submission,
-    });
+    return sendSuccess(res, { data: submission });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Update submission status (Grading)
-// @route   PUT /api/submissions/:id
-// @access  Private/Admin
-exports.updateSubmissionStatus = async (req, res, next) => {
+const updateSubmissionStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
 
@@ -190,11 +261,33 @@ exports.updateSubmissionStatus = async (req, res, next) => {
       throw new Error('Submission not found');
     }
 
-    res.status(200).json({
-      success: true,
+    await logAudit({
+      action: 'submission.grade',
+      actorId: req.user.id,
+      targetType: 'submission',
+      targetId: submission._id,
+      metadata: {
+        status,
+        challengeId: submission.challengeId?._id,
+        userId: submission.userId?._id,
+      },
+    });
+
+    return sendSuccess(res, {
       data: submission,
+      message: 'Submission status updated successfully',
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
+
+module.exports = {
+  submitCode,
+  getSubmissions,
+  getMySubmissions,
+  getLeaderboard,
+  getSubmissionById,
+  updateSubmissionStatus,
+};
+

@@ -14,4 +14,9 @@ const challengeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+challengeSchema.index({ createdAt: -1 });
+challengeSchema.index({ difficulty: 1, category: 1 });
+challengeSchema.index({ title: 'text', description: 'text' });
+
 module.exports = mongoose.model('Challenge', challengeSchema);
+

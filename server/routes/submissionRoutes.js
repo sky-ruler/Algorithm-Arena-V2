@@ -11,21 +11,28 @@ const {
 } = require('../controllers/SubmissionController');
 
 const { protect, admin } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const {
+  submissionIdParamsSchema,
+  submissionCreateSchema,
+  submissionUpdateSchema,
+  submissionQuerySchema,
+  leaderboardQuerySchema,
+  mySubmissionQuerySchema,
+} = require('../validators/submissionSchemas');
 
-// Path: /api/submissions
-router.route('/')
-  .get(protect, admin, getSubmissions)
-  .post(protect, submitCode);
+router
+  .route('/')
+  .get(protect, admin, validate(submissionQuerySchema), getSubmissions)
+  .post(protect, validate(submissionCreateSchema), submitCode);
 
-// Path: /api/submissions/my-submissions
-router.get('/my-submissions', protect, getMySubmissions);
+router.get('/my-submissions', protect, validate(mySubmissionQuerySchema), getMySubmissions);
+router.get('/leaderboard', protect, validate(leaderboardQuerySchema), getLeaderboard);
 
-// Path: /api/submissions/leaderboard
-router.get('/leaderboard', protect, getLeaderboard);
-
-// Path: /api/submissions/:id
-router.route('/:id')
-  .get(protect, getSubmissionById)
-  .put(protect, admin, updateSubmissionStatus);
+router
+  .route('/:id')
+  .get(protect, validate(submissionIdParamsSchema), getSubmissionById)
+  .put(protect, admin, validate(submissionIdParamsSchema), validate(submissionUpdateSchema), updateSubmissionStatus);
 
 module.exports = router;
+

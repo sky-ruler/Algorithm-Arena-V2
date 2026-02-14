@@ -7,6 +7,30 @@
 
 :root {
   --font-stack: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-size-display: clamp(2rem, 3.2vw, 3.75rem);
+  --font-size-h1: clamp(1.6rem, 2.4vw, 2.4rem);
+  --font-size-h2: clamp(1.2rem, 1.6vw, 1.8rem);
+  --font-size-body: 1rem;
+  --font-size-caption: 0.85rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.15);
   
   /* LIGHT MODE (High Orbit) */
   --bg-app: #eef2f5;
@@ -43,6 +67,7 @@
 
 body {
   font-family: var(--font-stack);
+  line-height: 1.5;
   color: var(--fg-primary);
   background-color: var(--bg-app);
   min-height: 100vh;
@@ -91,3 +116,110 @@ body {
   box-shadow: var(--glass-shadow);
   border-radius: 20px;
 }
+
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.text-display {
+  font-size: var(--font-size-display);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+
+.text-page-title {
+  font-size: var(--font-size-h1);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.text-section-title {
+  font-size: var(--font-size-h2);
+  line-height: 1.2;
+}
+
+.text-body {
+  font-size: var(--font-size-body);
+}
+
+.text-caption {
+  font-size: var(--font-size-caption);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--fg-secondary);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.field-input,
+.field-textarea,
+.field-select {
+  width: 100%;
+  border: 1px solid var(--glass-border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg-primary);
+  padding: 0.8rem 0.9rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.field-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.field-input:focus,
+.field-textarea:focus,
+.field-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 25%, transparent);
+  outline: none;
+}
+
+.btn-primary {
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: white;
+  font-weight: 700;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 150ms ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  border: 1px solid var(--glass-border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg-primary);
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+}
+
+.responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .mobile-stack {
+    grid-template-columns: 1fr !important;
+  }
+}
+

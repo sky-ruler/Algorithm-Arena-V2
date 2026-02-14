@@ -1,167 +1,171 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import Card from '../components/Card';
-import { api, getAuthConfig } from '../lib/api';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SkeletonCard from '../components/SkeletonCard';
+import EmptyState from '../components/EmptyState';
+import { api } from '../lib/api';
+
+const defaultChallengeForm = {
+  title: '',
+  description: '',
+  difficulty: 'Easy',
+  points: 100,
+  category: 'Logic',
+};
 
 const AdminPanel = () => {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('create');
-  const [submissions, setSubmissions] = useState([]);
-  const [filter, setFilter] = useState('pending');
-  const [editingId, setEditingId] = useState(null);
+  const [createForm, setCreateForm] = useState(defaultChallengeForm);
+  const [editingChallenge, setEditingChallenge] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    difficulty: 'Easy',
-    points: 100,
+  const [reviewFilters, setReviewFilters] = useState({
+    page: 1,
+    limit: 10,
+    status: 'Pending',
+    userId: '',
+    challengeId: '',
+    from: '',
+    to: '',
   });
 
-  const fetchSubmissions = async () => {
-    try {
-      const res = await api.get('/api/submissions', getAuthConfig());
-      setSubmissions(res.data.data || []);
-    } catch (err) {
-      console.error('Failed to load submissions:', err);
-    }
-  };
+  const submissionsQuery = useQuery({
+    queryKey: ['admin-submissions', reviewFilters],
+    enabled: activeTab === 'review',
+    queryFn: async () => {
+      const params = new URLSearchParams();
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    if (tab === 'review') {
-      fetchSubmissions();
-    }
-  };
+      params.set('page', String(reviewFilters.page));
+      params.set('limit', String(reviewFilters.limit));
+      if (reviewFilters.status) params.set('status', reviewFilters.status);
+      if (reviewFilters.challengeId) params.set('challengeId', reviewFilters.challengeId);
+      if (reviewFilters.userId.length === 24) params.set('userId', reviewFilters.userId);
+      if (reviewFilters.from) params.set('from', new Date(`${reviewFilters.from}T00:00:00.000Z`).toISOString());
+      if (reviewFilters.to) params.set('to', new Date(`${reviewFilters.to}T23:59:59.999Z`).toISOString());
 
-  const handleCreate = async (e) => {
+      const res = await api.get(`/api/submissions?${params.toString()}`);
+      return {
+        data: res.data.data || [],
+        meta: res.data.meta || {},
+      };
+    },
+  });
+
+  const challengesQuery = useQuery({
+    queryKey: ['admin-challenges'],
+    enabled: activeTab === 'manage' || activeTab === 'review',
+    queryFn: async () => {
+      const res = await api.get('/api/challenges?page=1&limit=100&sortBy=createdAt&sortDir=desc');
+      return res.data.data || [];
+    },
+  });
+
+  const onCreateChallenge = async (e) => {
     e.preventDefault();
-
     try {
-      await api.post('/api/challenges', formData, getAuthConfig());
-      alert('Challenge published.');
-      setFormData({ title: '', description: '', difficulty: 'Easy', points: 100 });
+      await api.post('/api/challenges', createForm);
+      toast.success('Challenge created');
+      setCreateForm(defaultChallengeForm);
+      queryClient.invalidateQueries({ queryKey: ['admin-challenges'] });
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to publish challenge.');
+      toast.error(err.userMessage || 'Failed to create challenge');
     }
   };
 
-  const handleGrade = async (id, status) => {
+  const onUpdateChallenge = async () => {
+    if (!editingChallenge) return;
     try {
-      const res = await api.put(`/api/submissions/${id}`, { status }, getAuthConfig());
-      const updatedSubmission = res.data.data;
-      setSubmissions((prev) => prev.map((sub) => (sub._id === id ? updatedSubmission : sub)));
-      setEditingId(null);
+      await api.put(`/api/challenges/${editingChallenge._id}`, {
+        title: editingChallenge.title,
+        description: editingChallenge.description,
+        difficulty: editingChallenge.difficulty,
+        points: Number(editingChallenge.points),
+        category: editingChallenge.category,
+      });
+      toast.success('Challenge updated');
+      setEditingChallenge(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-challenges'] });
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to grade submission.');
+      toast.error(err.userMessage || 'Failed to update challenge');
     }
   };
 
-  const confirmReEvaluation = (id) => {
-    if (window.confirm('Re-evaluate this submission?')) {
-      setEditingId(id);
+  const onDeleteChallenge = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/api/challenges/${deleteTarget._id}`);
+      toast.success('Challenge deleted');
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-challenges'] });
+    } catch (err) {
+      toast.error(err.userMessage || 'Failed to delete challenge');
     }
   };
 
-  const filteredSubmissions = submissions.filter((sub) => {
-    if (filter === 'pending') {
-      return sub.status === 'Pending';
+  const onGrade = async (id, status) => {
+    try {
+      await api.put(`/api/submissions/${id}`, { status });
+      toast.success(`Submission marked ${status}`);
+      queryClient.invalidateQueries({ queryKey: ['admin-submissions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    } catch (err) {
+      toast.error(err.userMessage || 'Failed to grade submission');
     }
-
-    return sub.status !== 'Pending';
-  });
-
-  const inputStyle = {
-    width: '100%',
-    padding: '14px',
-    borderRadius: '12px',
-    border: '1px solid var(--glass-border-color)',
-    background: 'rgba(255, 255, 255, 0.05)',
-    color: 'var(--fg-primary)',
-    outline: 'none',
-    marginBottom: '16px',
-    fontSize: '14px',
   };
+
+  const submissions = submissionsQuery.data?.data || [];
+  const reviewMeta = submissionsQuery.data?.meta || {};
+
+  const reviewQueryLabel = useMemo(() => {
+    if (reviewFilters.status === 'Pending') return 'Pending Reviews';
+    if (reviewFilters.status === 'Accepted') return 'Accepted';
+    if (reviewFilters.status === 'Rejected') return 'Rejected';
+    return 'All';
+  }, [reviewFilters.status]);
 
   return (
-    <div>
-      <h1 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '32px' }}>Creator Studio</h1>
+    <div className="space-y-6">
+      <h1 className="text-page-title font-extrabold">Creator Studio</h1>
 
-      <div
-        style={{
-          background: 'rgba(120, 120, 128, 0.1)',
-          padding: '4px',
-          borderRadius: '12px',
-          display: 'inline-flex',
-          marginBottom: '32px',
-          border: '1px solid var(--glass-border-color)',
-        }}
-      >
-        <button
-          onClick={() => handleTabChange('create')}
-          style={{
-            padding: '8px 24px',
-            borderRadius: '8px',
-            border: 'none',
-            fontWeight: '600',
-            cursor: 'pointer',
-            background: activeTab === 'create' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'create' ? '#fff' : 'var(--fg-secondary)',
-            transition: 'all 0.2s',
-          }}
-        >
-          + New Challenge
+      <div className="macos-glass p-2 inline-flex gap-2">
+        <button className={`px-4 py-2 rounded-lg ${activeTab === 'create' ? 'bg-accent text-white' : ''}`} onClick={() => setActiveTab('create')}>
+          New Challenge
         </button>
-        <button
-          onClick={() => handleTabChange('review')}
-          style={{
-            padding: '8px 24px',
-            borderRadius: '8px',
-            border: 'none',
-            fontWeight: '600',
-            cursor: 'pointer',
-            background: activeTab === 'review' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'review' ? '#fff' : 'var(--fg-secondary)',
-            transition: 'all 0.2s',
-          }}
-        >
+        <button className={`px-4 py-2 rounded-lg ${activeTab === 'review' ? 'bg-accent text-white' : ''}`} onClick={() => setActiveTab('review')}>
           Review Work
+        </button>
+        <button className={`px-4 py-2 rounded-lg ${activeTab === 'manage' ? 'bg-accent text-white' : ''}`} onClick={() => setActiveTab('manage')}>
+          Manage Challenges
         </button>
       </div>
 
-      <Card>
-        {activeTab === 'create' && (
-          <form onSubmit={handleCreate} style={{ maxWidth: '600px' }}>
-            <h2 style={{ marginBottom: '24px', fontSize: '20px', fontWeight: '700' }}>Draft Protocol</h2>
-
-            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--fg-secondary)', fontSize: '13px' }}>
-              Title
-            </label>
-            <input
-              type="text"
-              required
-              style={inputStyle}
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            />
-
-            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--fg-secondary)', fontSize: '13px' }}>
-              Description
-            </label>
-            <textarea
-              rows="4"
-              required
-              style={inputStyle}
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+      {activeTab === 'create' && (
+        <Card>
+          <form onSubmit={onCreateChallenge} className="space-y-4 max-w-2xl">
+            <h2 className="text-section-title font-bold">Create Challenge</h2>
+            <div>
+              <label className="field-label">Title</label>
+              <input className="field-input" value={createForm.title} onChange={(e) => setCreateForm((p) => ({ ...p, title: e.target.value }))} required />
+            </div>
+            <div>
+              <label className="field-label">Description</label>
+              <textarea
+                className="field-textarea"
+                value={createForm.description}
+                onChange={(e) => setCreateForm((p) => ({ ...p, description: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label style={{ display: 'block', marginBottom: '8px', color: 'var(--fg-secondary)', fontSize: '13px' }}>
-                  Difficulty
-                </label>
+                <label className="field-label">Difficulty</label>
                 <select
-                  style={inputStyle}
-                  value={formData.difficulty}
-                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                  className="field-select"
+                  value={createForm.difficulty}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, difficulty: e.target.value }))}
                 >
                   <option>Easy</option>
                   <option>Medium</option>
@@ -169,168 +173,277 @@ const AdminPanel = () => {
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: '8px', color: 'var(--fg-secondary)', fontSize: '13px' }}>
-                  Points
-                </label>
+                <label className="field-label">Points</label>
                 <input
+                  className="field-input"
                   type="number"
-                  required
-                  style={inputStyle}
-                  value={formData.points}
-                  onChange={(e) => setFormData({ ...formData, points: Number(e.target.value) })}
+                  min="1"
+                  value={createForm.points}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, points: Number(e.target.value) }))}
                 />
               </div>
+              <div>
+                <label className="field-label">Category</label>
+                <input className="field-input" value={createForm.category} onChange={(e) => setCreateForm((p) => ({ ...p, category: e.target.value }))} />
+              </div>
             </div>
-
-            <button
-              type="submit"
-              style={{
-                width: '100%',
-                padding: '14px',
-                borderRadius: '12px',
-                border: 'none',
-                background: 'var(--accent-primary)',
-                color: 'white',
-                fontWeight: '600',
-                cursor: 'pointer',
-                marginTop: '16px',
-              }}
-            >
-              Publish to Arena
+            <button className="btn-primary" type="submit">
+              Publish Challenge
             </button>
           </form>
-        )}
+        </Card>
+      )}
 
-        {activeTab === 'review' && (
-          <div>
-            <div
-              style={{
-                marginBottom: '24px',
-                display: 'flex',
-                gap: '16px',
-                borderBottom: '1px solid var(--glass-border-color)',
-              }}
-            >
-              <button
-                onClick={() => setFilter('pending')}
-                style={{
-                  paddingBottom: '8px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  color: filter === 'pending' ? 'var(--accent-primary)' : 'var(--fg-secondary)',
-                  borderBottom: filter === 'pending' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                }}
+      {activeTab === 'review' && (
+        <Card>
+          <div className="space-y-4">
+            <h2 className="text-section-title font-bold">{reviewQueryLabel}</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+              <select
+                className="field-select"
+                value={reviewFilters.status}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, status: e.target.value }))}
               >
-                Pending
-              </button>
-              <button
-                onClick={() => setFilter('history')}
-                style={{
-                  paddingBottom: '8px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  color: filter === 'history' ? 'var(--accent-primary)' : 'var(--fg-secondary)',
-                  borderBottom: filter === 'history' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                }}
+                <option value="Pending">Pending</option>
+                <option value="Accepted">Accepted</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+              <select
+                className="field-select"
+                value={reviewFilters.challengeId}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, challengeId: e.target.value }))}
               >
-                History
-              </button>
+                <option value="">All Challenges</option>
+                {(challengesQuery.data || []).map((challenge) => (
+                  <option key={challenge._id} value={challenge._id}>
+                    {challenge.title}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="field-input"
+                placeholder="User ID (24 chars)"
+                value={reviewFilters.userId}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, userId: e.target.value.trim() }))}
+              />
+              <input
+                className="field-input"
+                type="date"
+                value={reviewFilters.from}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, from: e.target.value }))}
+                aria-label="From date"
+              />
+              <input
+                className="field-input"
+                type="date"
+                value={reviewFilters.to}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, to: e.target.value }))}
+                aria-label="To date"
+              />
+              <select
+                className="field-select"
+                value={reviewFilters.limit}
+                onChange={(e) => setReviewFilters((p) => ({ ...p, page: 1, limit: Number(e.target.value) }))}
+              >
+                <option value="10">10 rows</option>
+                <option value="20">20 rows</option>
+                <option value="50">50 rows</option>
+              </select>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr
-                  style={{
-                    color: 'var(--fg-secondary)',
-                    borderBottom: '1px solid var(--glass-border-color)',
-                    fontSize: '13px',
-                  }}
-                >
-                  <th style={{ padding: '12px' }}>Student</th>
-                  <th style={{ padding: '12px' }}>Challenge</th>
-                  <th style={{ padding: '12px' }}>Solution</th>
-                  <th style={{ padding: '12px' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSubmissions.map((sub) => (
-                  <tr key={sub._id} style={{ borderBottom: '1px solid var(--glass-border-color)' }}>
-                    <td style={{ padding: '12px', fontWeight: '600' }}>{sub.userId?.username || 'Unknown'}</td>
-                    <td style={{ padding: '12px' }}>{sub.challengeId?.title || 'Unknown Challenge'}</td>
-                    <td style={{ padding: '12px', fontFamily: 'monospace', fontSize: '12px' }}>
-                      {sub.repositoryUrl ? (
-                        <a href={sub.repositoryUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
-                          Link
-                        </a>
-                      ) : (
-                        'Snippet'
-                      )}
-                    </td>
-                    <td style={{ padding: '12px' }}>
-                      {sub.status === 'Pending' || editingId === sub._id ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={() => handleGrade(sub._id, 'Accepted')}
-                            style={{
-                              background: 'rgba(48, 209, 88, 0.1)',
-                              color: '#30D158',
-                              border: 'none',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                              fontSize: '12px',
-                            }}
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => handleGrade(sub._id, 'Rejected')}
-                            style={{
-                              background: 'rgba(255, 69, 58, 0.1)',
-                              color: '#FF453A',
-                              border: 'none',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                              fontSize: '12px',
-                            }}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      ) : (
-                        <span
-                          onClick={() => confirmReEvaluation(sub._id)}
-                          style={{
-                            fontSize: '12px',
-                            color: sub.status === 'Accepted' ? '#30D158' : '#FF453A',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {sub.status}{' '}
-                          <span style={{ color: 'var(--fg-secondary)', fontSize: '10px' }}>(edit)</span>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {submissionsQuery.isLoading ? (
+              <div className="space-y-3">
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+            ) : submissions.length === 0 ? (
+              <EmptyState title="No submissions" description="No submissions match your filters." />
+            ) : (
+              <>
+                <div className="hidden md:block overflow-auto">
+                  <table className="responsive-table">
+                    <thead>
+                      <tr className="text-left border-b border-glass-border text-secondary text-sm">
+                        <th className="py-3">Student</th>
+                        <th className="py-3">Challenge</th>
+                        <th className="py-3">Language</th>
+                        <th className="py-3">Status</th>
+                        <th className="py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {submissions.map((sub) => (
+                        <tr key={sub._id} className="border-b border-glass-border/60">
+                          <td className="py-3">{sub.userId?.username || 'Unknown'}</td>
+                          <td className="py-3">{sub.challengeId?.title || 'Unknown'}</td>
+                          <td className="py-3">{sub.language || '-'}</td>
+                          <td className="py-3">{sub.status}</td>
+                          <td className="py-3">
+                            <div className="flex gap-2">
+                              <button className="btn-secondary" onClick={() => onGrade(sub._id, 'Accepted')}>
+                                Accept
+                              </button>
+                              <button className="btn-secondary" onClick={() => onGrade(sub._id, 'Rejected')}>
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-            {filteredSubmissions.length === 0 && (
-              <p style={{ textAlign: 'center', padding: '32px', color: 'var(--fg-secondary)' }}>No submissions yet.</p>
+                <div className="md:hidden space-y-3">
+                  {submissions.map((sub) => (
+                    <div key={sub._id} className="border border-glass-border rounded-xl p-4 space-y-3">
+                      <div>
+                        <p className="font-semibold">{sub.userId?.username || 'Unknown'}</p>
+                        <p className="text-secondary text-sm">{sub.challengeId?.title || 'Unknown challenge'}</p>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>{sub.language || '-'}</span>
+                        <span>{sub.status}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="btn-secondary" onClick={() => onGrade(sub._id, 'Accepted')}>
+                          Accept
+                        </button>
+                        <button className="btn-secondary" onClick={() => onGrade(sub._id, 'Rejected')}>
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-secondary text-sm">
+                    Page {reviewMeta.page || 1} of {reviewMeta.totalPages || 1}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setReviewFilters((p) => ({ ...p, page: Math.max(1, p.page - 1) }))}
+                      disabled={(reviewMeta.page || 1) <= 1}
+                    >
+                      Prev
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setReviewFilters((p) => ({ ...p, page: p.page + 1 }))}
+                      disabled={(reviewMeta.page || 1) >= (reviewMeta.totalPages || 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
+
+      {activeTab === 'manage' && (
+        <Card>
+          <h2 className="text-section-title font-bold mb-4">Manage Challenges</h2>
+
+          {challengesQuery.isLoading ? (
+            <div className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : (challengesQuery.data || []).length === 0 ? (
+            <EmptyState title="No challenges yet" description="Create your first challenge from the New Challenge tab." />
+          ) : (
+            <div className="space-y-3">
+              {(challengesQuery.data || []).map((challenge) => (
+                <div key={challenge._id} className="border border-glass-border rounded-xl p-4 flex flex-wrap gap-3 justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold">{challenge.title}</h3>
+                    <p className="text-secondary text-sm">{challenge.difficulty} - {challenge.points} XP - {challenge.category}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="btn-secondary" onClick={() => setEditingChallenge({ ...challenge })}>
+                      Edit
+                    </button>
+                    <button className="btn-secondary" onClick={() => setDeleteTarget(challenge)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete challenge"
+        description={`This will permanently remove "${deleteTarget?.title || ''}".`}
+        confirmLabel="Delete"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={onDeleteChallenge}
+      />
+
+      {editingChallenge && (
+        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="macos-glass w-full max-w-3xl p-6 space-y-4">
+            <h3 className="text-section-title font-bold">Edit Challenge</h3>
+            <div>
+              <label className="field-label">Title</label>
+              <input
+                className="field-input"
+                value={editingChallenge.title}
+                onChange={(e) => setEditingChallenge((p) => ({ ...p, title: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="field-label">Description</label>
+              <textarea
+                className="field-textarea"
+                value={editingChallenge.description}
+                onChange={(e) => setEditingChallenge((p) => ({ ...p, description: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <select
+                className="field-select"
+                value={editingChallenge.difficulty}
+                onChange={(e) => setEditingChallenge((p) => ({ ...p, difficulty: e.target.value }))}
+              >
+                <option>Easy</option>
+                <option>Medium</option>
+                <option>Hard</option>
+              </select>
+              <input
+                className="field-input"
+                type="number"
+                value={editingChallenge.points}
+                onChange={(e) => setEditingChallenge((p) => ({ ...p, points: Number(e.target.value) }))}
+              />
+              <input
+                className="field-input"
+                value={editingChallenge.category}
+                onChange={(e) => setEditingChallenge((p) => ({ ...p, category: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => setEditingChallenge(null)}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={onUpdateChallenge}>
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default AdminPanel;
+

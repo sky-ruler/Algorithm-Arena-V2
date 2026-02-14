@@ -1,25 +1,54 @@
 const Challenge = require('../models/Challenge');
+const { sendSuccess } = require('../utils/response');
+const { logAudit } = require('../utils/audit');
 
-// @desc    Get all challenges
-// @route   GET /api/challenges
-// @access  Public
-exports.getChallenges = async (req, res, next) => {
+const getChallenges = async (req, res, next) => {
   try {
-    const challenges = await Challenge.find().sort({ createdAt: -1 });
-    res.status(200).json({
-      success: true,
-      count: challenges.length,
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      difficulty,
+      category,
+      sortBy = 'createdAt',
+      sortDir = 'desc',
+    } = req.query;
+
+    const filter = {};
+    if (difficulty) filter.difficulty = difficulty;
+    if (category) filter.category = category;
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const sortOrder = sortDir === 'asc' ? 1 : -1;
+    const sort = { [sortBy]: sortOrder };
+
+    const skip = (page - 1) * limit;
+
+    const [total, challenges] = await Promise.all([
+      Challenge.countDocuments(filter),
+      Challenge.find(filter).sort(sort).skip(skip).limit(limit),
+    ]);
+
+    return sendSuccess(res, {
       data: challenges,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   } catch (err) {
-    next(err); // Passes error to the global handler in server.js
+    return next(err);
   }
 };
 
-// @desc    Get single challenge
-// @route   GET /api/challenges/:id
-// @access  Public
-exports.getChallengeById = async (req, res, next) => {
+const getChallengeById = async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id);
 
@@ -28,68 +57,68 @@ exports.getChallengeById = async (req, res, next) => {
       throw new Error('Challenge not found');
     }
 
-    res.status(200).json({
-      success: true,
-      data: challenge,
-    });
+    return sendSuccess(res, { data: challenge });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Create new challenge
-// @route   POST /api/challenges
-// @access  Private/Admin
-exports.createChallenge = async (req, res, next) => {
+const createChallenge = async (req, res, next) => {
   try {
-    // Basic validation
-    const { title, description, points } = req.body;
-    if (!title || !description || !points) {
-      res.status(400);
-      throw new Error('Please include a title, description, and points');
-    }
-
     const challenge = await Challenge.create(req.body);
 
-    res.status(201).json({
-      success: true,
+    await logAudit({
+      action: 'challenge.create',
+      actorId: req.user.id,
+      targetType: 'challenge',
+      targetId: challenge._id,
+      metadata: {
+        title: challenge.title,
+        difficulty: challenge.difficulty,
+        points: challenge.points,
+      },
+    });
+
+    return sendSuccess(res, {
+      statusCode: 201,
       data: challenge,
+      message: 'Challenge created successfully',
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Update challenge
-// @route   PUT /api/challenges/:id
-// @access  Private/Admin
-exports.updateChallenge = async (req, res, next) => {
+const updateChallenge = async (req, res, next) => {
   try {
-    let challenge = await Challenge.findById(req.params.id);
+    const challenge = await Challenge.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
     if (!challenge) {
       res.status(404);
       throw new Error('Challenge not found');
     }
 
-    challenge = await Challenge.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    await logAudit({
+      action: 'challenge.update',
+      actorId: req.user.id,
+      targetType: 'challenge',
+      targetId: challenge._id,
+      metadata: { updatedFields: Object.keys(req.body) },
     });
 
-    res.status(200).json({
-      success: true,
+    return sendSuccess(res, {
       data: challenge,
+      message: 'Challenge updated successfully',
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-// @desc    Delete challenge
-// @route   DELETE /api/challenges/:id
-// @access  Private/Admin
-exports.deleteChallenge = async (req, res, next) => {
+const deleteChallenge = async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id);
 
@@ -100,11 +129,30 @@ exports.deleteChallenge = async (req, res, next) => {
 
     await challenge.deleteOne();
 
-    res.status(200).json({
-      success: true,
+    await logAudit({
+      action: 'challenge.delete',
+      actorId: req.user.id,
+      targetType: 'challenge',
+      targetId: challenge._id,
+      metadata: {
+        title: challenge.title,
+      },
+    });
+
+    return sendSuccess(res, {
+      data: null,
       message: 'Challenge removed successfully',
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
+
+module.exports = {
+  getChallenges,
+  getChallengeById,
+  createChallenge,
+  updateChallenge,
+  deleteChallenge,
+};
+

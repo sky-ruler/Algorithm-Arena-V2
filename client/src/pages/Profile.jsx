@@ -1,163 +1,126 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Card from '../components/Card';
-import { api, getAuthConfig } from '../lib/api';
-
-const getStoredUsername = () => {
-  const raw = localStorage.getItem('user');
-  if (!raw) {
-    return 'User';
-  }
-
-  try {
-    return JSON.parse(raw).username || 'User';
-  } catch {
-    return 'User';
-  }
-};
+import EmptyState from '../components/EmptyState';
+import SkeletonCard from '../components/SkeletonCard';
+import { api } from '../lib/api';
+import { useAuth } from '../context/useAuth';
 
 const Profile = () => {
-  const [submissions, setSubmissions] = useState([]);
-  const [username] = useState(() => getStoredUsername());
+  const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const res = await api.get('/api/submissions/my-submissions', getAuthConfig());
-        setSubmissions(res.data.data || []);
-      } catch (err) {
-        console.error('Failed to load submission history:', err);
-      }
-    };
+  const profileQuery = useQuery({
+    queryKey: ['profile-stats'],
+    queryFn: async () => {
+      const res = await api.get('/api/profile/stats');
+      return res.data.data;
+    },
+  });
 
-    fetchHistory();
-  }, []);
+  if (profileQuery.isLoading) {
+    return (
+      <div className="space-y-4">
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
 
-  const acceptedCount = submissions.filter((s) => s.status === 'Accepted').length;
+  if (profileQuery.isError) {
+    return <Card className="text-red-400">{profileQuery.error?.userMessage || 'Failed to load profile.'}</Card>;
+  }
+
+  const stats = profileQuery.data;
+  const submissions = stats?.recentSubmissions || [];
+  const total = stats?.totalSubmissions || 0;
+  const acceptedPct = total ? Math.round(((stats?.acceptedCount || 0) / total) * 100) : 0;
 
   return (
-    <div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '24px',
-          marginBottom: '32px',
-        }}
-      >
-        <Card style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <div
-            style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--accent-primary), #5AC8FA)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '32px',
-              fontWeight: 'bold',
-              color: 'white',
-              boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-            }}
-          >
-            {username[0]?.toUpperCase() || 'U'}
-          </div>
-          <div>
-            <h1 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>{username}</h1>
-            <p style={{ color: 'var(--fg-secondary)', fontSize: '14px' }}>Student Developer</p>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-1">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-blue-400 flex items-center justify-center text-2xl text-white font-bold">
+              {user?.username?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <div>
+              <h1 className="text-page-title font-bold">{user?.username || 'User'}</h1>
+              <p className="text-secondary">Role: {user?.role || 'user'}</p>
+            </div>
           </div>
         </Card>
 
-        <Card style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', textAlign: 'center' }}>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: '800', marginBottom: '4px' }}>{submissions.length}</div>
-            <div style={{ fontSize: '13px', color: 'var(--fg-secondary)', fontWeight: '500' }}>Total Submissions</div>
+        <Card className="lg:col-span-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-caption text-secondary">Total</p>
+              <p className="text-2xl font-bold">{stats.totalSubmissions}</p>
+            </div>
+            <div>
+              <p className="text-caption text-secondary">Accepted</p>
+              <p className="text-2xl font-bold text-green-400">{stats.acceptedCount}</p>
+            </div>
+            <div>
+              <p className="text-caption text-secondary">Rejected</p>
+              <p className="text-2xl font-bold text-red-400">{stats.rejectedCount}</p>
+            </div>
+            <div>
+              <p className="text-caption text-secondary">Points</p>
+              <p className="text-2xl font-bold text-accent">{stats.totalPoints}</p>
+            </div>
           </div>
-          <div style={{ width: '1px', height: '40px', background: 'var(--glass-border-color)' }}></div>
-          <div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: '#30D158', marginBottom: '4px' }}>{acceptedCount}</div>
-            <div style={{ fontSize: '13px', color: 'var(--fg-secondary)', fontWeight: '500' }}>Solutions Accepted</div>
+
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2 text-sm">
+              <span className="text-secondary">Acceptance Rate</span>
+              <span className="font-semibold">{acceptedPct}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-green-400 to-accent" style={{ width: `${acceptedPct}%` }} />
+            </div>
           </div>
         </Card>
       </div>
 
-      <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '16px' }}>Recent Activity</h2>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {submissions.length > 0 ? (
-          submissions.map((sub) => (
-            <Card
-              key={sub._id}
-              className="hover-scale"
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px' }}
-            >
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '6px' }}>
-                  {sub.challengeId?.title || 'Unknown Challenge'}
-                </h3>
-                <div style={{ fontSize: '13px', color: 'var(--fg-secondary)', display: 'flex', gap: '12px' }}>
-                  <span>{new Date(sub.submittedAt).toLocaleDateString()}</span>
-                  <span>*</span>
-                  <span
-                    style={{
-                      color:
-                        sub.challengeId?.difficulty === 'Easy'
-                          ? '#30D158'
-                          : sub.challengeId?.difficulty === 'Medium'
-                            ? '#FF9F0A'
-                            : '#FF453A',
-                    }}
-                  >
-                    {sub.challengeId?.difficulty}
-                  </span>
+      <Card>
+        <h2 className="text-section-title font-bold mb-4">Recent Activity</h2>
+        {submissions.length ? (
+          <div className="space-y-3">
+            {submissions.map((sub) => (
+                <div key={sub._id} className="border border-glass-border rounded-xl p-4 flex flex-wrap justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{sub.challengeId?.title || 'Unknown Challenge'}</h3>
+                  <p className="text-secondary text-sm">{new Date(sub.submittedAt).toLocaleString()}</p>
                 </div>
-              </div>
-
-              <div style={{ textAlign: 'right' }}>
-                <span
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    background:
+                  <div className="text-right">
+                    <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
                       sub.status === 'Accepted'
-                        ? 'rgba(48, 209, 88, 0.1)'
+                        ? 'bg-green-500/20 text-green-400'
                         : sub.status === 'Rejected'
-                          ? 'rgba(255, 69, 58, 0.1)'
-                          : 'rgba(255, 159, 10, 0.1)',
-                    color:
-                      sub.status === 'Accepted'
-                        ? '#30D158'
-                        : sub.status === 'Rejected'
-                          ? '#FF453A'
-                          : '#FF9F0A',
-                  }}
-                >
-                  {sub.status}
-                </span>
-
-                {sub.repositoryUrl && (
-                  <div style={{ marginTop: '8px' }}>
-                    <a
-                      href={sub.repositoryUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: '12px', color: 'var(--fg-secondary)', textDecoration: 'none', fontWeight: '500' }}
-                    >
-                      View Code
-                    </a>
+                          ? 'bg-red-500/20 text-red-400'
+                          : 'bg-yellow-500/20 text-yellow-400'
+                    }`}
+                  >
+                    {sub.status}
+                    </span>
+                    {sub.repositoryUrl && (
+                      <a href={sub.repositoryUrl} target="_blank" rel="noreferrer" className="block mt-2 text-sm text-accent underline">
+                        Open Repository
+                      </a>
+                    )}
+                    <Link to={`/submission/${sub._id}`} className="block mt-2 text-sm text-accent underline">
+                      View Submission
+                    </Link>
                   </div>
-                )}
-              </div>
-            </Card>
-          ))
-        ) : (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--fg-secondary)' }}>
-            No activity recorded. Start solving problems.
+                </div>
+            ))}
           </div>
+        ) : (
+          <EmptyState title="No activity yet" description="Solve a challenge to start building your profile history." />
         )}
-      </div>
+      </Card>
     </div>
   );
 };

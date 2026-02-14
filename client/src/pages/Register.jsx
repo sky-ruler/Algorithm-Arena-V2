@@ -1,30 +1,48 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiArrowRight, FiCpu, FiLock, FiMail, FiUser } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import Card from '../components/Card';
 import { api } from '../lib/api';
 
 const Register = () => {
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const canSubmit = useMemo(() => {
+    return formData.username.trim().length >= 3 && formData.email.trim().length > 0 && formData.password.length >= 6;
+  }, [formData]);
+
+  const validate = () => {
+    const nextErrors = {};
+    if (formData.username.trim().length < 3) nextErrors.username = 'Username must be at least 3 characters';
+    if (!formData.email.trim()) nextErrors.email = 'Email is required';
+    if (formData.password.length < 6) nextErrors.password = 'Password must be at least 6 characters';
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    setError('');
+    setErrors((prev) => ({ ...prev, [e.target.name]: '' }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
+
     setLoading(true);
-    setError('');
 
     try {
       await api.post('/api/auth/register', formData);
+      toast.success('Account created. Please log in.');
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      const message = err.userMessage || 'Registration failed';
+      setErrors({ form: message });
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -49,16 +67,16 @@ const Register = () => {
         </div>
 
         <Card className="shadow-2xl shadow-black/5 backdrop-blur-2xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
+          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+            {errors.form && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                {error}
+                {errors.form}
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Codename (Username)</label>
+              <label className="field-label">Codename (Username)</label>
               <div className="relative group">
                 <FiUser className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -69,12 +87,14 @@ const Register = () => {
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
                   placeholder="e.g. Neo"
+                  aria-invalid={Boolean(errors.username)}
                 />
               </div>
+              {errors.username && <p className="text-red-500 text-sm">{errors.username}</p>}
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Email Address</label>
+              <label className="field-label">Email Address</label>
               <div className="relative group">
                 <FiMail className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -85,12 +105,14 @@ const Register = () => {
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
                   placeholder="name@example.com"
+                  aria-invalid={Boolean(errors.email)}
                 />
               </div>
+              {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Password</label>
+              <label className="field-label">Password</label>
               <div className="relative group">
                 <FiLock className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
                 <input
@@ -101,13 +123,15 @@ const Register = () => {
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
                   placeholder="Minimum 6 characters"
+                  aria-invalid={Boolean(errors.password)}
                 />
               </div>
+              {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !canSubmit}
               className="w-full py-3.5 rounded-xl bg-accent hover:bg-accent-glow text-white font-bold transition-all shadow-lg shadow-accent/25 hover:shadow-accent/40 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -138,3 +162,4 @@ const Register = () => {
 };
 
 export default Register;
+
