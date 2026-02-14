@@ -1,80 +1,80 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import Layout from './components/Layout';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 
-// Pages
+// --- Components ---
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
+
+// --- Pages ---
+import Home from './pages/Home';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import AdminPanel from './pages/AdminPanel';
 import ChallengeDetails from './pages/ChallengeDetails';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
+import AdminPanel from './pages/AdminPanel';
 import NotFound from './pages/NotFound';
-import Home from './pages/Home';
-import Register from './pages/Register';
 
-// Protected Route Wrapper
-const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
-};
-
-// Admin Route Wrapper
-const AdminRoute = ({ children }) => {
-  // Add your JWT admin check here if needed
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
-};
-
-function AppContent() {
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const navigate = useNavigate();
   const location = useLocation();
-  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('token'));
-  
-  // Routes that should NOT have the Sidebar
-  const publicRoutes = ['/', '/login', '/register'];
-  const showSidebar = isLoggedIn && !publicRoutes.includes(location.pathname);
+
+  // Sync state with LocalStorage on mount/change
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    setToken(storedToken);
+  }, [location]);
+
+  const handleLoginSuccess = () => {
+    setToken(localStorage.getItem('token'));
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    setIsLoggedIn(false);
-  };
-
-  const handleLoginSuccess = () => {
-    setIsLoggedIn(true);
+    setToken(null);
+    navigate('/login');
   };
 
   return (
     <div className="app-container">
-      {showSidebar ? (
-        <Layout onLogout={handleLogout}>
-          <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/challenge/:id" element={<ChallengeDetails />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Layout>
-      ) : (
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="/register" element={<Register />} />
-          {/* Redirect logged-in users trying to access login */}
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} /> 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      )}
-    </div>
-  );
-}
+      <Routes>
+        {/* --- PUBLIC ROUTES (No Sidebar) --- */}
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+        <Route path="/register" element={<Register />} />
 
-function App() {
-  return (
-    <Router>
-      <AppContent />
-    </Router>
+        {/* --- PROTECTED ROUTES (With Sidebar) --- */}
+        {/* We wrap these in a Layout Route to apply the Sidebar globally */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <Layout onLogout={handleLogout} />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/challenge/:id" element={<ChallengeDetails />} />
+          
+          {/* Admin Only */}
+          <Route 
+            path="/admin" 
+            element={
+              <AdminRoute>
+                <AdminPanel />
+              </AdminRoute>
+            } 
+          />
+        </Route>
+
+        {/* --- 404 PAGE --- */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </div>
   );
 }
 

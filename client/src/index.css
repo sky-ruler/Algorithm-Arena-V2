@@ -6,17 +6,17 @@
   
   /* --- LIGHT MODE (High Orbit) --- */
   --bg-app: #eef2f5;
-  --bg-sidebar: rgba(255, 255, 255, 0.6);
+  --bg-sidebar: rgba(255, 255, 255, 0.65);
   --fg-primary: #1c1c1e;
   --fg-secondary: #6e6e73;
   --fg-tertiary: #a1a1a6;
   
   --accent-primary: #007AFF; /* Command Blue */
-  --accent-glow: rgba(0, 122, 255, 0.3);
+  --accent-glow: rgba(0, 122, 255, 0.25);
   
   /* Glass Recipe */
-  --glass-surface: rgba(255, 255, 255, 0.4);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.6);
+  --glass-surface: rgba(255, 255, 255, 0.5);
+  --glass-border-color: rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
   
   /* Animation Gradients (Light) */
@@ -36,13 +36,13 @@
   --accent-glow: rgba(10, 132, 255, 0.4);
   
   /* Glass Recipe */
-  --glass-surface: rgba(30, 30, 35, 0.5);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-surface: rgba(30, 30, 35, 0.6);
+  --glass-border-color: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   
   /* Animation Gradients (Dark) */
   --orb-1: rgba(10, 132, 255, 0.15);
-  --orb-2: rgba(172, 50, 255, 0.1); /* Subtle Void Purple */
+  --orb-2: rgba(172, 50, 255, 0.1); 
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -51,8 +51,26 @@ body {
   font-family: var(--font-stack);
   color: var(--fg-primary);
   background-color: var(--bg-app);
-  overflow: hidden; /* App-like feel */
-  transition: background-color 0.5s ease;
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+  -webkit-font-smoothing: antialiased; /* Crisper text */
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- PRO SCROLLBARS --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+::-webkit-scrollbar-thumb {
+  background: var(--fg-tertiary);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-secondary);
 }
 
 /* --- THE DYNAMIC BACKGROUND ENGINE --- */
@@ -61,6 +79,7 @@ body {
   top: 0; left: 0; width: 100vw; height: 100vh;
   z-index: -1;
   overflow: hidden;
+  pointer-events: none;
 }
 
 /* Moving Orbs/Nebulas */
@@ -69,33 +88,35 @@ body {
   border-radius: 50%;
   filter: blur(80px);
   z-index: -1;
-  animation: float 20s infinite alternate ease-in-out;
+  will-change: transform; /* Performance optimization */
+  animation: float 25s infinite alternate ease-in-out;
 }
 
 .orb-1 {
-  width: 50vw; height: 50vw;
+  width: 60vw; height: 60vw;
   background: var(--orb-1);
-  top: -10%; left: -10%;
+  top: -15%; left: -15%;
 }
 
 .orb-2 {
-  width: 40vw; height: 40vw;
+  width: 50vw; height: 50vw;
   background: var(--orb-2);
-  bottom: -10%; right: -10%;
+  bottom: -15%; right: -15%;
   animation-delay: -5s;
 }
 
 @keyframes float {
   0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(50px, 30px) scale(1.1); }
+  100% { transform: translate(40px, 20px) scale(1.05); }
 }
 
 /* --- UTILITIES --- */
+/* The "Glass" Utility Class used by components */
 .macos-glass {
   background: var(--glass-surface);
   backdrop-filter: blur(20px) saturate(120%);
   -webkit-backdrop-filter: blur(20px) saturate(120%);
-  border: var(--glass-border);
+  border: 1px solid var(--glass-border-color);
   box-shadow: var(--glass-shadow);
   border-radius: 20px;
 }
