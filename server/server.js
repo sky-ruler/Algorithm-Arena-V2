@@ -1,10 +1,14 @@
 require('dotenv').config();
+const dns = require('dns');
+
+// 🔧 FIX: Force Node.js to use Google DNS to bypass ISP blocks
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 
 // Import Routes
-// These imports work now because 'routes' is in the same folder as 'server.js'
 const authRoutes = require('./routes/authRoutes');
 const challengeRoutes = require('./routes/challengeRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
@@ -12,12 +16,12 @@ const submissionRoutes = require('./routes/submissionRoutes');
 const app = express();
 
 // Middleware
-app.use(express.json()); 
+app.use(express.json());
 app.use(cors());
 
 // Database Connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB Connected'))
+  .then(() => console.log('✅ MongoDB Connected (via Google DNS)'))
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // Routes
