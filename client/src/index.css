@@ -1,55 +1,40 @@
 @import url('https://rsms.me/inter/inter.css');
 
-/* 🚨 THESE 3 LINES ARE CRITICAL FOR TAILWIND TO WORK 🚨 */
+/* Tailwind Engine Directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* --- TYPOGRAPHY --- */
   --font-stack: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   
-  /* --- LIGHT MODE (High Orbit) --- */
+  /* LIGHT MODE (High Orbit) */
   --bg-app: #eef2f5;
   --bg-sidebar: rgba(255, 255, 255, 0.65);
   --fg-primary: #1c1c1e;
   --fg-secondary: #6e6e73;
   --fg-tertiary: #a1a1a6;
-  
-  --accent-primary: #007AFF; /* Command Blue */
+  --accent-primary: #007AFF;
   --accent-glow: rgba(0, 122, 255, 0.25);
-  
-  /* Glass Recipe */
-<<<<<<< HEAD
   --glass-surface: rgba(255, 255, 255, 0.7);
-=======
-  --glass-surface: rgba(255, 255, 255, 0.5);
->>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   --glass-border-color: rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
-  
-  /* Animation Gradients (Light) */
   --orb-1: #D4E4FF;
   --orb-2: #E6EEFF;
 }
 
 [data-theme="dark"] {
-  /* --- DARK MODE (Deep Space) --- */
+  /* DARK MODE (Deep Space) */
   --bg-app: #050507;
   --bg-sidebar: rgba(20, 20, 25, 0.6);
   --fg-primary: #f5f5f7;
   --fg-secondary: #86868b;
   --fg-tertiary: #505055;
-  
-  --accent-primary: #0A84FF; /* Neon Blue */
+  --accent-primary: #0A84FF;
   --accent-glow: rgba(10, 132, 255, 0.4);
-  
-  /* Glass Recipe */
   --glass-surface: rgba(30, 30, 35, 0.6);
   --glass-border-color: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  
-  /* Animation Gradients (Dark) */
   --orb-1: rgba(10, 132, 255, 0.15);
   --orb-2: rgba(172, 50, 255, 0.1); 
 }
@@ -60,35 +45,19 @@ body {
   font-family: var(--font-stack);
   color: var(--fg-primary);
   background-color: var(--bg-app);
-<<<<<<< HEAD
   min-height: 100vh;
   transition: background-color 0.4s ease, color 0.4s ease;
   -webkit-font-smoothing: antialiased;
-=======
-  overflow-x: hidden;
-  transition: background-color 0.4s ease, color 0.4s ease;
-  -webkit-font-smoothing: antialiased; /* Crisper text */
->>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- PRO SCROLLBARS --- */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent; 
-}
-::-webkit-scrollbar-thumb {
-  background: var(--fg-tertiary);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-secondary);
-}
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--fg-tertiary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-secondary); }
 
-/* --- THE DYNAMIC BACKGROUND ENGINE --- */
+/* Animated Background */
 .cosmos-background {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
@@ -97,40 +66,23 @@ body {
   pointer-events: none;
 }
 
-/* Moving Orbs/Nebulas */
 .orb {
   position: absolute;
   border-radius: 50%;
   filter: blur(80px);
   z-index: -1;
-<<<<<<< HEAD
   will-change: transform;
-=======
-  will-change: transform; /* Performance optimization */
->>>>>>> 2ec9dbc68af7791a406dc288e851d0d9e5895edd
   animation: float 25s infinite alternate ease-in-out;
 }
 
-.orb-1 {
-  width: 60vw; height: 60vw;
-  background: var(--orb-1);
-  top: -15%; left: -15%;
-}
-
-.orb-2 {
-  width: 50vw; height: 50vw;
-  background: var(--orb-2);
-  bottom: -15%; right: -15%;
-  animation-delay: -5s;
-}
+.orb-1 { width: 60vw; height: 60vw; background: var(--orb-1); top: -15%; left: -15%; }
+.orb-2 { width: 50vw; height: 50vw; background: var(--orb-2); bottom: -15%; right: -15%; animation-delay: -5s; }
 
 @keyframes float {
   0% { transform: translate(0, 0) scale(1); }
   100% { transform: translate(40px, 20px) scale(1.05); }
 }
 
-/* --- UTILITIES --- */
-/* The "Glass" Utility Class used by components */
 .macos-glass {
   background: var(--glass-surface);
   backdrop-filter: blur(20px) saturate(120%);
