@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { env } = require('../config/env');
 
 // Guard: Protect routes for logged-in users
 exports.protect = async (req, res, next) => {
@@ -14,7 +15,7 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
     const user = await User.findById(decoded.id).select('-password');
 
     if (!user) {

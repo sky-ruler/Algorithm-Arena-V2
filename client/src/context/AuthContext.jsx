@@ -16,21 +16,25 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(getStoredUser);
   const [loading, setLoading] = useState(true);
 
-  const clearSession = useCallback(() => {
+  const clearSession = useCallback((nextLoading = false) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+    setLoading(nextLoading);
   }, []);
 
   const refreshMe = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return null;
-    }
-
     try {
+      const existingToken = localStorage.getItem('token');
+      if (!existingToken) {
+        const refreshRes = await api.post('/api/auth/refresh');
+        const refreshPayload = refreshRes.data?.data;
+        const nextToken = refreshPayload?.token || refreshPayload?.accessToken;
+        if (nextToken) {
+          localStorage.setItem('token', nextToken);
+        }
+      }
+
       const res = await api.get('/api/auth/me');
       const me = res.data?.data;
       const normalizedUser = {
@@ -60,18 +64,22 @@ export const AuthProvider = ({ children }) => {
   }, [clearSession]);
 
   const login = useCallback((payload) => {
+    const token = payload?.token || payload?.accessToken;
     const normalizedUser = {
       id: payload?._id,
       username: payload?.username,
       role: payload?.role,
     };
 
-    localStorage.setItem('token', payload?.token);
+    if (token) {
+      localStorage.setItem('token', token);
+    }
     localStorage.setItem('user', JSON.stringify(normalizedUser));
     setUser(normalizedUser);
   }, []);
 
   const logout = useCallback(() => {
+    api.post('/api/auth/logout').catch(() => null);
     clearSession();
   }, [clearSession]);
 

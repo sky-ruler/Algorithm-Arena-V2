@@ -26,6 +26,21 @@
         "summary": "Get current authenticated user"
       }
     },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Rotate refresh token and issue new access token"
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout current session"
+      }
+    },
+    "/api/auth/logout-all": {
+      "post": {
+        "summary": "Logout all sessions for current user"
+      }
+    },
     "/api/challenges": {
       "get": {
         "summary": "List challenges with query filters"
@@ -83,4 +98,3 @@
     }
   }
 }
-

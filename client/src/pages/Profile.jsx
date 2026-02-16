@@ -1,14 +1,20 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import SkeletonCard from '../components/SkeletonCard';
+import PageHeader from '../components/PageHeader';
 import { api } from '../lib/api';
 import { useAuth } from '../context/useAuth';
 
+const activityFilters = ['All', 'Accepted', 'Rejected', 'Pending'];
+const NOW_MS = Date.now();
+
 const Profile = () => {
   const { user } = useAuth();
+  const [activityFilter, setActivityFilter] = useState('All');
+  const [activityQuery, setActivityQuery] = useState('');
 
   const profileQuery = useQuery({
     queryKey: ['profile-stats'],
@@ -17,6 +23,25 @@ const Profile = () => {
       return res.data.data;
     },
   });
+
+  const stats = profileQuery.data || {};
+  const submissions = useMemo(() => stats.recentSubmissions || [], [stats.recentSubmissions]);
+  const total = stats.totalSubmissions || 0;
+  const acceptedPct = total ? Math.round(((stats.acceptedCount || 0) / total) * 100) : 0;
+
+  const acceptedInLastWeek = useMemo(() => {
+    const sevenDaysAgo = NOW_MS - 7 * 24 * 60 * 60 * 1000;
+    return submissions.filter((sub) => sub.status === 'Accepted' && new Date(sub.submittedAt).getTime() >= sevenDaysAgo).length;
+  }, [submissions]);
+
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((sub) => {
+      const matchesStatus = activityFilter === 'All' || sub.status === activityFilter;
+      const query = activityQuery.trim().toLowerCase();
+      const title = (sub.challengeId?.title || '').toLowerCase();
+      return matchesStatus && (!query || title.includes(query));
+    });
+  }, [submissions, activityFilter, activityQuery]);
 
   if (profileQuery.isLoading) {
     return (
@@ -31,13 +56,22 @@ const Profile = () => {
     return <Card className="text-red-400">{profileQuery.error?.userMessage || 'Failed to load profile.'}</Card>;
   }
 
-  const stats = profileQuery.data;
-  const submissions = stats?.recentSubmissions || [];
-  const total = stats?.totalSubmissions || 0;
-  const acceptedPct = total ? Math.round(((stats?.acceptedCount || 0) / total) * 100) : 0;
-
   return (
     <div className="space-y-8">
+      <PageHeader
+        title={user?.username || 'Profile'}
+        subtitle={`Role: ${user?.role || 'user'}   |   Accepted this week: ${acceptedInLastWeek}`}
+        actions={
+          <div className="chip-group">
+            {activityFilters.map((filter) => (
+              <button key={filter} className={`chip-btn ${activityFilter === filter ? 'active' : ''}`} onClick={() => setActivityFilter(filter)}>
+                {filter}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1">
           <div className="flex items-center gap-4">
@@ -45,14 +79,14 @@ const Profile = () => {
               {user?.username?.[0]?.toUpperCase() || 'U'}
             </div>
             <div>
-              <h1 className="text-page-title font-bold">{user?.username || 'User'}</h1>
-              <p className="text-secondary">Role: {user?.role || 'user'}</p>
+              <h2 className="text-section-title font-bold">{user?.username || 'User'}</h2>
+              <p className="text-secondary text-sm">Keep shipping accepted solutions.</p>
             </div>
           </div>
         </Card>
 
         <Card className="lg:col-span-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p className="text-caption text-secondary">Total</p>
               <p className="text-2xl font-bold">{stats.totalSubmissions}</p>
@@ -64,6 +98,10 @@ const Profile = () => {
             <div>
               <p className="text-caption text-secondary">Rejected</p>
               <p className="text-2xl font-bold text-red-400">{stats.rejectedCount}</p>
+            </div>
+            <div>
+              <p className="text-caption text-secondary">Pending</p>
+              <p className="text-2xl font-bold text-yellow-400">{stats.pendingCount}</p>
             </div>
             <div>
               <p className="text-caption text-secondary">Points</p>
@@ -84,17 +122,26 @@ const Profile = () => {
       </div>
 
       <Card>
-        <h2 className="text-section-title font-bold mb-4">Recent Activity</h2>
-        {submissions.length ? (
+        <div className="flex flex-wrap justify-between gap-3 mb-4">
+          <h2 className="text-section-title font-bold">Recent Activity</h2>
+          <input
+            className="field-input md:max-w-sm"
+            placeholder="Search by challenge title"
+            value={activityQuery}
+            onChange={(e) => setActivityQuery(e.target.value)}
+          />
+        </div>
+
+        {filteredSubmissions.length ? (
           <div className="space-y-3">
-            {submissions.map((sub) => (
-                <div key={sub._id} className="border border-glass-border rounded-xl p-4 flex flex-wrap justify-between gap-3">
+            {filteredSubmissions.map((sub) => (
+              <div key={sub._id} className="border border-glass-border rounded-xl p-4 flex flex-wrap justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{sub.challengeId?.title || 'Unknown Challenge'}</h3>
                   <p className="text-secondary text-sm">{new Date(sub.submittedAt).toLocaleString()}</p>
                 </div>
-                  <div className="text-right">
-                    <span
+                <div className="text-right">
+                  <span
                     className={`px-3 py-1 rounded-full text-xs font-bold ${
                       sub.status === 'Accepted'
                         ? 'bg-green-500/20 text-green-400'
@@ -104,21 +151,21 @@ const Profile = () => {
                     }`}
                   >
                     {sub.status}
-                    </span>
-                    {sub.repositoryUrl && (
-                      <a href={sub.repositoryUrl} target="_blank" rel="noreferrer" className="block mt-2 text-sm text-accent underline">
-                        Open Repository
-                      </a>
-                    )}
-                    <Link to={`/submission/${sub._id}`} className="block mt-2 text-sm text-accent underline">
-                      View Submission
-                    </Link>
-                  </div>
+                  </span>
+                  {sub.repositoryUrl && (
+                    <a href={sub.repositoryUrl} target="_blank" rel="noreferrer" className="block mt-2 text-sm text-accent underline">
+                      Open Repository
+                    </a>
+                  )}
+                  <Link to={`/submission/${sub._id}`} className="block mt-2 text-sm text-accent underline">
+                    View Submission
+                  </Link>
                 </div>
+              </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="No activity yet" description="Solve a challenge to start building your profile history." />
+          <EmptyState title="No matching activity" description="Try a different filter or solve more challenges." />
         )}
       </Card>
     </div>
@@ -126,4 +173,3 @@ const Profile = () => {
 };
 
 export default Profile;
-

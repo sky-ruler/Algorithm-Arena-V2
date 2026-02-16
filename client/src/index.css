@@ -208,6 +208,57 @@ body {
   padding: 0.75rem 1rem;
 }
 
+.segmented {
+  display: inline-flex;
+  gap: 0.35rem;
+  border: 1px solid var(--glass-border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.25rem;
+}
+
+.segmented-btn {
+  border: none;
+  border-radius: calc(var(--radius-md) - 0.2rem);
+  background: transparent;
+  color: var(--fg-secondary);
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.segmented-btn.active {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  color: var(--fg-primary);
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip-btn {
+  border: 1px solid var(--glass-border-color);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+.chip-btn.active {
+  color: var(--fg-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--glass-border-color));
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+}
+
 .responsive-table {
   width: 100%;
   border-collapse: collapse;

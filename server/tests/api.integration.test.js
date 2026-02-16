@@ -8,6 +8,7 @@ let mongoServer;
 let app;
 let User;
 let Submission;
+let RefreshToken;
 
 const clearDatabase = async () => {
   const collections = mongoose.connection.collections;
@@ -25,6 +26,7 @@ test.before(async () => {
   ({ app } = require('../server'));
   User = require('../models/User');
   Submission = require('../models/Submission');
+  RefreshToken = require('../models/RefreshToken');
 
   await mongoose.connect(process.env.MONGO_URI);
 });
@@ -67,6 +69,45 @@ test('register, login, and /auth/me lifecycle works', async () => {
   assert.equal(meRes.status, 200);
   assert.equal(meRes.body.success, true);
   assert.equal(meRes.body.data.email, 'pilot.one@example.com');
+});
+
+test('refresh rotation and logout revocation flow works', async () => {
+  const agent = request.agent(app);
+
+  const registerRes = await agent.post('/api/auth/register').send({
+    username: 'rotate_user',
+    email: 'rotate@example.com',
+    password: 'strong-password',
+  });
+
+  assert.equal(registerRes.status, 201);
+  assert.ok(registerRes.body.data.token);
+
+  const tokenCountBeforeRefresh = await RefreshToken.countDocuments();
+  assert.equal(tokenCountBeforeRefresh, 1);
+
+  const refreshRes = await agent.post('/api/auth/refresh').send({});
+  assert.equal(refreshRes.status, 200);
+  assert.equal(refreshRes.body.success, true);
+  assert.ok(refreshRes.body.data.token);
+
+  const meRes = await agent
+    .get('/api/auth/me')
+    .set('Authorization', `Bearer ${refreshRes.body.data.token}`);
+  assert.equal(meRes.status, 200);
+  assert.equal(meRes.body.data.email, 'rotate@example.com');
+
+  const refreshTokens = await RefreshToken.find().sort({ createdAt: 1 });
+  assert.equal(refreshTokens.length, 2);
+  assert.ok(refreshTokens[0].revokedAt);
+  assert.equal(refreshTokens[0].replacedByTokenHash, refreshTokens[1].tokenHash);
+
+  const logoutRes = await agent.post('/api/auth/logout').send({});
+  assert.equal(logoutRes.status, 200);
+  assert.equal(logoutRes.body.success, true);
+
+  const postLogoutRefresh = await agent.post('/api/auth/refresh').send({});
+  assert.equal(postLogoutRefresh.status, 401);
 });
 
 test('challenge + submission flow enforces owner permissions', async () => {

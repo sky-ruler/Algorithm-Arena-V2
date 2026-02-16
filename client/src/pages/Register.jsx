@@ -4,12 +4,14 @@ import { FiArrowRight, FiCpu, FiLock, FiMail, FiUser } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import Card from '../components/Card';
 import { api } from '../lib/api';
+import { useAuth } from '../context/useAuth';
 
 const Register = () => {
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const canSubmit = useMemo(() => {
     return formData.username.trim().length >= 3 && formData.email.trim().length > 0 && formData.password.length >= 6;
@@ -36,9 +38,10 @@ const Register = () => {
     setLoading(true);
 
     try {
-      await api.post('/api/auth/register', formData);
-      toast.success('Account created. Please log in.');
-      navigate('/login');
+      const res = await api.post('/api/auth/register', formData);
+      login(res.data?.data);
+      toast.success('Account created');
+      navigate('/dashboard');
     } catch (err) {
       const message = err.userMessage || 'Registration failed';
       setErrors({ form: message });

@@ -15,8 +15,12 @@ const loginSchema = {
   }),
 };
 
+const refreshSchema = {
+  body: z.object({}).optional(),
+};
+
 module.exports = {
   registerSchema,
   loginSchema,
+  refreshSchema,
 };
-
