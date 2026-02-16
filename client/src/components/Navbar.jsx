@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FiCpu, FiGrid, FiAward, FiUser, FiLogOut, FiMenu, FiX, FiShield } from 'react-icons/fi';
 import { clsx } from 'clsx';
-import ThemeToggle from './ThemeToggle';
 import { useAuth } from '../context/useAuth';
 
 const Navbar = ({ onLogout }) => {
@@ -55,7 +54,6 @@ const Navbar = ({ onLogout }) => {
             </div>
 
             <div className="flex items-center gap-2 md:gap-4">
-              <ThemeToggle />
               <button
                 onClick={onLogout}
                 className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"

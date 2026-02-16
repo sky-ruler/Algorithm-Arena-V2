@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import LoadingScreen from './components/LoadingScreen';
+import ThemeToggle from './components/ThemeToggle';
 import { useAuth } from './context/useAuth';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -25,12 +26,15 @@ function App() {
   const handleLoginSuccess = () => {};
 
   const handleLogout = () => {
+    navigate('/', { replace: true });
     logout();
-    navigate('/login');
   };
 
   return (
     <div className="app-container">
+      <div className="fixed bottom-6 right-6 z-[60]">
+        <ThemeToggle />
+      </div>
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path="/" element={<Home />} />
