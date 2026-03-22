@@ -1,4 +1,3 @@
-Website:- https://algorithm-arena.in
 Website:- https://algorithm-arena.one
 MERN Stack for Algorithm-Arena
 
