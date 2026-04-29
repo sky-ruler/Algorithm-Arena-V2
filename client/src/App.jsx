@@ -18,6 +18,8 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Clans = lazy(() => import('./pages/Clans'));
 const Profile = lazy(() => import('./pages/Profile'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const Missions = lazy(() => import('./pages/Missions'));
+const PendingTasks = lazy(() => import('./pages/PendingTasks'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
@@ -55,6 +57,8 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/challenge/:id" element={<ChallengeDetails />} />
             <Route path="/submission/:id" element={<SubmissionDetails />} />
+            <Route path="/missions" element={<Missions />} />
+            <Route path="/pending-tasks" element={<PendingTasks />} />
             <Route
               path="/admin"
               element={
