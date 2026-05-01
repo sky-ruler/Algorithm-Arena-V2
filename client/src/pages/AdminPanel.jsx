@@ -36,6 +36,9 @@ const AdminPanel = () => {
   const [deleteClanTarget, setDeleteClanTarget] = useState(null);
   const [clanSearch, setClanSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberRole, setMemberRole] = useState('member');
+  const [addingMember, setAddingMember] = useState(false);
 
   const [reviewFilters, setReviewFilters] = useState({
     page: 1,
@@ -125,6 +128,20 @@ const AdminPanel = () => {
         return data.length > 0 ? data : mockAdminClans;
       } catch {
         return mockAdminClans;
+      }
+    },
+  });
+
+  const usersQuery = useQuery({
+    queryKey: ['admin-users'],
+    enabled: activeTab === 'permissions',
+    queryFn: async () => {
+      try {
+        const res = await api.get('/api/users');
+        const data = res.data.data || [];
+        return data.length > 0 ? data : mockUsers;
+      } catch {
+        return mockUsers;
       }
     },
   });
@@ -979,7 +996,7 @@ const AdminPanel = () => {
               </div>
 
               <div className="space-y-2">
-                {membersQuery.data.map((member) => (
+                {(editingClan.members || []).map((member) => (
                   <div
                     key={member._id}
                     className="border border-glass-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3"

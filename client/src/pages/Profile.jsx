@@ -29,23 +29,23 @@ const generateHeatmapData = () => {
 
 const SolvedBreakdown = ({ stats }) => {
   const categories = [
-    { 
-      label: 'Easy', 
-      color: 'bg-green-500', 
-      val: stats?.difficultyBreakdown?.easy?.solved || 0, 
-      total: stats?.difficultyBreakdown?.easy?.total || 1 
+    {
+      label: 'Easy',
+      color: 'bg-green-500',
+      val: stats?.difficultyBreakdown?.easy?.solved || 0,
+      total: stats?.difficultyBreakdown?.easy?.total || 1
     },
-    { 
-      label: 'Medium', 
-      color: 'bg-yellow-500', 
-      val: stats?.difficultyBreakdown?.medium?.solved || 0, 
-      total: stats?.difficultyBreakdown?.medium?.total || 1 
+    {
+      label: 'Medium',
+      color: 'bg-yellow-500',
+      val: stats?.difficultyBreakdown?.medium?.solved || 0,
+      total: stats?.difficultyBreakdown?.medium?.total || 1
     },
-    { 
-      label: 'Hard', 
-      color: 'bg-red-500', 
-      val: stats?.difficultyBreakdown?.hard?.solved || 0, 
-      total: stats?.difficultyBreakdown?.hard?.total || 1 
+    {
+      label: 'Hard',
+      color: 'bg-red-500',
+      val: stats?.difficultyBreakdown?.hard?.solved || 0,
+      total: stats?.difficultyBreakdown?.hard?.total || 1
     }
   ];
 
@@ -66,10 +66,10 @@ const SolvedBreakdown = ({ stats }) => {
                 <span className="text-primary font-bold">{c.val}<span className="text-tertiary">/{c.total}</span></span>
               </div>
               <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                <motion.div 
+                <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${(c.val / c.total) * 100}%` }}
-                  className={`h-full ${c.color} shadow-[0_0_8px_rgba(34,197,94,0.4)]`} 
+                  className={`h-full ${c.color} shadow-[0_0_8px_rgba(34,197,94,0.4)]`}
                 />
               </div>
             </div>
@@ -88,7 +88,7 @@ const SolvedBreakdown = ({ stats }) => {
 
 const ActivityHeatmap = ({ heatmapData }) => {
   const data = useMemo(() => heatmapData && heatmapData.length > 0 ? heatmapData : generateHeatmapData(), [heatmapData]);
-  
+
   const months = useMemo(() => {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonth = new Date().getMonth();
@@ -100,14 +100,14 @@ const ActivityHeatmap = ({ heatmapData }) => {
     }
     return result;
   }, []);
-  
+
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-2 mb-6">
         <FiActivity className="text-accent" />
         <h2 className="text-lg font-bold">Activity Heatmap</h2>
       </div>
-      
+
       <div className="overflow-x-auto pb-4 custom-scrollbar">
         <div className="flex flex-col gap-2 min-w-[800px]">
           <div className="grid grid-flow-col grid-rows-7 gap-1">
@@ -248,13 +248,13 @@ const Profile = () => {
 
       {showAvatarPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <motion.div 
+          <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="macos-glass p-8 max-w-md w-full"
           >
             <h3 className="text-xl font-bold mb-6 text-primary">Identity Selection</h3>
-            
+
             <div className="mb-8 p-6 border-2 border-dashed border-glass-border rounded-2xl hover:border-accent transition-colors cursor-pointer group relative" onClick={() => fileInputRef.current?.click()}>
                <div className="flex flex-col items-center gap-2">
                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center text-accent group-hover:scale-110 transition-transform">
@@ -263,26 +263,26 @@ const Profile = () => {
                  <p className="text-sm font-bold text-primary">Upload from device</p>
                  <p className="text-[10px] text-tertiary">PNG, JPG up to 2MB</p>
                </div>
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 onChange={handleFileUpload} 
-                 className="hidden" 
+               <input
+                 type="file"
+                 ref={fileInputRef}
+                 onChange={handleFileUpload}
+                 className="hidden"
                  accept="image/*"
                />
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-8">
               {PRESET_AVATARS.map((url, i) => (
-                <button 
-                  key={i} 
+                <button
+                  key={i}
                   onClick={() => handleAvatarSelect(url)}
                   className="relative group rounded-xl overflow-hidden aspect-square border-2 border-transparent hover:border-accent transition-all"
                 >
                   <img src={url} alt={`Avatar ${i}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                 </button>
               ))}
-              <button 
+              <button
                  onClick={() => handleAvatarSelect(null)}
                  className="rounded-xl bg-glass-surface flex items-center justify-center border-2 border-dashed border-tertiary hover:border-accent transition-all text-secondary text-xs uppercase"
               >
@@ -294,9 +294,11 @@ const Profile = () => {
         </div>
       )}
 
+            {/* Main Grid Container */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Left Column: Stats Summary */}
-        <div className="xl:col-span-1 flex flex-col gap-6 h-full min-h-full">
+
+        {/* Left Column: Stats Summary (xl:col-span-1) */}
+        <div className="xl:col-span-1 flex flex-col gap-6">
           <Card className="text-center pt-8">
             <div className="relative inline-block mb-4 group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
               <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-accent to-purple-500 p-1 transition-transform group-hover:scale-105">
@@ -315,7 +317,7 @@ const Profile = () => {
             </div>
             <h2 className="text-2xl font-black text-primary">{user?.username}</h2>
             <p className="text-secondary text-sm mt-1 mb-6">Expert Algorithmist</p>
-            
+
             <div className="space-y-3 text-left">
                <div className="flex items-center gap-3 text-secondary text-sm">
                  <FiMapPin className="text-accent" />
@@ -355,20 +357,11 @@ const Profile = () => {
              <p className="text-xs text-secondary mt-2">{user?.clanTag ? `[${user.clanTag}]` : 'Join a clan from the leaderboard'}</p>
           </Card>
 
-      <Card>
-        <div className="flex flex-wrap justify-between gap-3 mb-4">
-          <h2 className="text-section-title font-bold">Recent Activity</h2>
-          <input
-            name="activitySearch"
-            className="field-input md:max-w-sm"
-            placeholder="Search by challenge title"
-            value={activityQuery}
-            onChange={(e) => setActivityQuery(e.target.value)}
-          />
+          <SolvedBreakdown stats={stats} />
         </div>
 
-        {/* Right Column: Heatmap & Activity */}
-        <div className="xl:col-span-3 flex flex-col gap-6 h-full min-h-full">
+        {/* Right Column: Heatmap & Activity (xl:col-span-3) */}
+        <div className="xl:col-span-3 flex flex-col gap-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Solved', val: stats.acceptedCount || 0, color: 'text-green-400', sub: 'Total missions', icon: FiZap },
@@ -401,13 +394,13 @@ const Profile = () => {
                 </h2>
                 <p className="text-xs text-secondary mt-1">Showing {filteredSubmissions.length} activities</p>
               </div>
-              
+
               <div className="flex flex-wrap items-center gap-2">
                 <div className="segmented">
                   {activityFilters.map((filter) => (
-                    <button 
-                      key={filter} 
-                      className={`segmented-btn !text-[10px] ${activityFilter === filter ? 'active' : ''}`} 
+                    <button
+                      key={filter}
+                      className={`segmented-btn !text-[10px] ${activityFilter === filter ? 'active' : ''}`}
                       onClick={() => setActivityFilter(filter)}
                     >
                       {filter}
@@ -429,15 +422,15 @@ const Profile = () => {
             {filteredSubmissions.length ? (
               <div className="space-y-2">
                 {filteredSubmissions.map((sub) => (
-                  <motion.div 
-                    key={sub._id} 
+                  <motion.div
+                    key={sub._id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="group border border-glass-border/40 rounded-xl p-4 flex items-center justify-between gap-4 hover:border-accent/40 transition-all cursor-pointer"
                   >
                     <div className="flex items-center gap-4">
                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
-                         sub.status === 'Accepted' ? 'bg-green-500/10 text-green-400' : 
+                         sub.status === 'Accepted' ? 'bg-green-500/10 text-green-400' :
                          sub.status === 'Rejected' ? 'bg-red-500/10 text-red-400' : 'bg-yellow-500/10 text-yellow-400'
                        }`}>
                          {sub.challengeId?.title?.[0] || 'C'}
@@ -448,7 +441,7 @@ const Profile = () => {
                            <span>{new Date(sub.submittedAt).toLocaleDateString()}</span>
                            <span>•</span>
                            <span className={
-                             sub.status === 'Accepted' ? 'text-green-500' : 
+                             sub.status === 'Accepted' ? 'text-green-500' :
                              sub.status === 'Rejected' ? 'text-red-500' : 'text-yellow-500'
                            }>{sub.status}</span>
                          </div>
@@ -465,8 +458,8 @@ const Profile = () => {
             )}
           </Card>
         </div>
-      </div>
-    </div>
+      </div> {/* This closes the grid-cols-4 div */}
+    </div> // This closes the main container div
   );
 };
 

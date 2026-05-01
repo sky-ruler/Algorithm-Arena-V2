@@ -1,26 +1,74 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { FiClock, FiCheckCircle, FiTarget, FiTrendingUp, FiCpu, FiZap, FiActivity, FiArrowRight } from 'react-icons/fi';
+import { FiClock, FiCheckCircle, FiTarget, FiTrendingUp, FiCpu, FiZap, FiActivity, FiArrowRight, FiGrid, FiList } from 'react-icons/fi';
 import { api } from '../lib/api';
-import { mockChallenges } from '../lib/mockData';
+import { mockChallenges, filterChallenges } from '../lib/mockData';
 import SkeletonCard from '../components/SkeletonCard';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 
+const difficultyChips = [
+  { value: "", label: "All" },
+  { value: "Easy", label: "Easy" },
+  { value: "Medium", label: "Medium" },
+  { value: "Hard", label: "Hard" },
+];
+
+const buildChallengeQuery = ({
+  page, limit, search, difficulty, category, sortBy, sortDir,
+}) => {
+  const params = new URLSearchParams();
+  params.set("page", page);
+  params.set("limit", limit);
+  params.set("sortBy", sortBy);
+  params.set("sortDir", sortDir);
+  if (search) params.set("search", search);
+  if (difficulty) params.set("difficulty", difficulty);
+  if (category) params.set("category", category);
+  return params.toString();
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
 
+  const [filters, setFilters] = useState({
+    page: 1,
+    limit: 6,
+    search: "",
+    difficulty: "",
+    category: "",
+    sortBy: "createdAt",
+    sortDir: "desc",
+  });
+
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem("dashboard:view") || "grid",
+  );
+
+  useEffect(() => {
+    localStorage.setItem("dashboard:view", viewMode);
+  }, [viewMode]);
+
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
+  };
+
   const challengesQuery = useQuery({
-    queryKey: ["dashboard-challenges"],
+    queryKey: ["dashboard-challenges", filters],
     queryFn: async () => {
       try {
-        const res = await api.get(`/api/challenges?page=1&limit=4&sortBy=createdAt&sortDir=desc`);
+        const qs = buildChallengeQuery(filters);
+        const res = await api.get(`/api/challenges?${qs}`);
         const data = res.data.data || [];
-        return data.length > 0 ? data : mockChallenges.slice(0, 4);
+        return {
+          data: data.length > 0 ? data : filterChallenges(filters).data,
+          meta: res.data.meta || filterChallenges(filters).meta,
+        };
       } catch {
-        return mockChallenges.slice(0, 4);
+        const result = filterChallenges(filters);
+        return { data: result.data, meta: result.meta };
       }
     },
   });
@@ -45,7 +93,8 @@ const Dashboard = () => {
     },
   });
 
-  const challenges = challengesQuery.data?.length ? challengesQuery.data : (challengesQuery.data?.data || mockChallenges.slice(0, 4));
+  const challenges = challengesQuery.data?.data?.length ? challengesQuery.data.data : mockChallenges.slice(0, 4);
+  const meta = challengesQuery.data?.meta || { page: 1, totalPages: 1, total: challenges.length };
 
   const MOCK_ACTIVITY = [
     { _id: 'a1', challengeId: { title: 'Two Sum' }, submittedAt: new Date().toISOString(), status: 'Accepted' },
@@ -98,6 +147,13 @@ const Dashboard = () => {
       return new Date(b.submittedAt) - new Date(a.submittedAt);
     });
   }, [recentActivity]);
+
+  const handlePageChange = (direction) => {
+    setFilters((prev) => ({
+      ...prev,
+      page: Math.max(1, prev.page + direction),
+    }));
+  };
 
   return (
     <div className="space-y-8">
@@ -156,6 +212,7 @@ const Dashboard = () => {
         })}
       </div>
 
+      {/* Filter Bar */}
       <div className="macos-glass p-3 sm:p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-xs sm:text-base">
         <input
           name="challengeSearch"
@@ -172,7 +229,7 @@ const Dashboard = () => {
           onChange={(e) => handleFilterChange("category", e.target.value)}
         />
 
-        {/* Mobile controls row: Pagination (long) + Sort + Order (small) */}
+        {/* Sort & Pagination controls */}
         <div className="flex gap-1 md:gap-2 md:grid md:grid-cols-3 md:col-span-3 items-center text-xs sm:text-base">
           <select
             name="challengePageSize"
@@ -198,7 +255,7 @@ const Dashboard = () => {
 
           <select
             name="challengeSortDirection"
-            className="field-select flex-1 min-w-[70px] md:w-full px-2 py-2 sm:px-3 sm:py-3 s"
+            className="field-select flex-1 min-w-[70px] md:w-full px-2 py-2 sm:px-3 sm:py-3"
             value={filters.sortDir}
             onChange={(e) => handleFilterChange("sortDir", e.target.value)}
           >
@@ -257,9 +314,9 @@ const Dashboard = () => {
             </div>
           ) : challenges.length === 0 ? (
             <EmptyState title="No challenges found" description="Check back later for new missions." />
-          ) : (
+          ) : viewMode === "grid" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {challenges.slice(0, 4).map((challenge, index) => (
+              {challenges.map((challenge, index) => (
                 <MotionBlock
                   key={challenge._id}
                   initial={{ opacity: 0, y: 10 }}
@@ -288,8 +345,63 @@ const Dashboard = () => {
                 </MotionBlock>
               ))}
             </div>
+          ) : (
+            <div className="space-y-3">
+              {challenges.map((challenge, index) => (
+                <MotionBlock
+                  key={challenge._id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                >
+                  <Link to={`/challenge/${challenge._id}`} className="group">
+                    <div className="macos-glass p-4 sm:p-6 hover:border-accent transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-accent/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div>
+                        <h3 className="text-lg font-bold group-hover:text-accent transition-colors">{challenge.title}</h3>
+                        <p className="text-secondary text-sm mt-1">{challenge.category}</p>
+                      </div>
+                      <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" : 
+                          challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
+                        }`}>
+                          {challenge.difficulty}
+                        </span>
+                        <span className="text-secondary text-sm min-w-[60px] text-right">{challenge.points} XP</span>
+                      </div>
+                    </div>
+                  </Link>
+                </MotionBlock>
+              ))}
+            </div>
           )}
           
+          {/* Pagination */}
+          {meta.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-glass-border/40 pt-4 mt-4">
+              <span className="text-secondary text-sm">
+                Page {meta.page || filters.page} of {meta.totalPages || 1}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handlePageChange(-1)}
+                  disabled={filters.page <= 1}
+                  className="btn-secondary px-4 disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => handlePageChange(1)}
+                  disabled={filters.page >= (meta.totalPages || 1)}
+                  className="btn-secondary px-4 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="pt-2">
             <Link to="/missions" className="btn-secondary w-full flex items-center justify-center gap-2 hover:bg-white/5 hover:border-accent/40 transition-all py-3">
               Explore More Missions <FiArrowRight />
