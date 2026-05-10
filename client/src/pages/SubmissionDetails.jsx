@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -14,77 +14,12 @@ import {
   FiGithub,
 } from 'react-icons/fi';
 
-// CodeMirror (read-only viewer)
-import CodeMirror from '@uiw/react-codemirror';
-import { javascript } from '@codemirror/lang-javascript';
-import { python } from '@codemirror/lang-python';
-import { java } from '@codemirror/lang-java';
-import { cpp } from '@codemirror/lang-cpp';
-import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { tags as t } from '@lezer/highlight';
+import CodeEditor from '../components/CodeEditor';
 
 import SkeletonCard from '../components/SkeletonCard';
 import Card from '../components/Card';
 import { api } from '../lib/api';
 import { USE_MOCK, mockSubmissions } from '../lib/mockData';
-
-// --- THEME DEFINITIONS (shared with ChallengeDetails) ---
-const darkHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: '#bd93f9', fontWeight: 'bold' },
-  { tag: t.string, color: '#ff6090' },
-  { tag: t.variableName, color: '#8be9fd' },
-  { tag: t.definition(t.variableName), color: '#f1fa8c' },
-  { tag: t.function(t.variableName), color: '#50fa7b' },
-  { tag: t.comment, color: '#6272a4', fontStyle: 'italic' },
-  { tag: t.number, color: '#ffb86c' },
-  { tag: t.operator, color: '#44adff' },
-]);
-
-const darkTheme = EditorView.theme(
-  {
-    '&': { color: 'white', backgroundColor: 'transparent !important' },
-    '.cm-content': {
-      fontFamily: "'Fira Code', 'JetBrains Mono', monospace",
-    },
-    '.cm-gutters': {
-      backgroundColor: 'transparent',
-      color: '#4b5563',
-      border: 'none',
-    },
-    '&.cm-focused .cm-selectionBackground, ::selection': {
-      backgroundColor: '#ffffff1a',
-    },
-  },
-  { dark: true },
-);
-
-const lightHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: '#d73a49', fontWeight: 'bold' },
-  { tag: t.string, color: '#005cc5' },
-  { tag: t.variableName, color: '#24292e' },
-  { tag: t.function(t.variableName), color: '#6f42c1' },
-  { tag: t.comment, color: '#6a737d', fontStyle: 'italic' },
-  { tag: t.number, color: '#e36209' },
-  { tag: t.operator, color: '#005cc5' },
-]);
-
-const lightTheme = EditorView.theme(
-  {
-    '&': { color: '#24292e', backgroundColor: 'white !important' },
-    '.cm-gutters': {
-      backgroundColor: '#f6f8fa',
-      color: '#afb8c1',
-      borderRight: '1px solid #d0d7de',
-    },
-    '.cm-activeLine': { backgroundColor: '#f6f8fa' },
-    '&.cm-focused .cm-selectionBackground, ::selection': {
-      backgroundColor: '#add6ff',
-    },
-  },
-  { dark: false },
-);
 
 const StatusBadge = ({ status }) => {
   const colorClass =
@@ -136,24 +71,6 @@ const SubmissionDetails = () => {
       return res.data.data;
     },
   });
-
-  const editorExtensions = useMemo(() => {
-    const submission = submissionQuery.data;
-    const lang = submission?.language || 'javascript';
-
-    const langExt = {
-      javascript: [javascript({ jsx: true })],
-      python: [python()],
-      java: [java()],
-      cpp: [cpp()],
-    }[lang] || [javascript()];
-
-    const themeExt = isDark
-      ? [darkTheme, syntaxHighlighting(darkHighlight)]
-      : [lightTheme, syntaxHighlighting(lightHighlight)];
-
-    return [...langExt, ...themeExt, EditorState.readOnly.of(true)];
-  }, [submissionQuery.data?.language, isDark]);
 
   if (submissionQuery.isLoading) {
     return (
@@ -225,20 +142,13 @@ const SubmissionDetails = () => {
             </span>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-hidden bg-black/10">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {submission.code ? (
-              <CodeMirror
+              <CodeEditor
                 value={submission.code}
-                height="100%"
-                extensions={editorExtensions}
-                editable={false}
-                className="text-sm h-full"
-                basicSetup={{
-                  lineNumbers: true,
-                  bracketMatching: true,
-                  closeBrackets: false,
-                  autocompletion: false,
-                }}
+                language={submission.language || 'javascript'}
+                isDark={isDark}
+                readOnly
               />
             ) : (
               <div className="flex items-center justify-center h-full text-secondary text-sm">
