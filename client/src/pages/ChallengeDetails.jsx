@@ -287,8 +287,8 @@ const ChallengeDetails = () => {
   };
 
   const handleSubmit = async () => {
-    if (!repoUrl && !codeSnippet.trim())
-      return toast.error("Please provide code or a GitHub link.");
+    if (!codeSnippet.trim() && !repoUrl.trim())
+      return toast.error("Please write some code or add a GitHub link.");
     setSubmitting(true);
     try {
       if (USE_MOCK) {
@@ -296,18 +296,18 @@ const ChallengeDetails = () => {
       } else {
         await api.post("/api/submissions", {
           challengeId: id,
-          repositoryUrl: repoUrl.trim() || undefined,
           code: codeSnippet.trim() || undefined,
           language,
+          repositoryUrl: repoUrl.trim() || undefined,
         });
       }
-      toast.success("Solution submitted.");
+      toast.success("Solution submitted successfully.");
       setRepoUrl("");
       setCodeByLang({});
       localStorage.removeItem(draftKey);
       queryClient.invalidateQueries({ queryKey: ["my-submissions", id] });
     } catch (err) {
-      toast.error(err.userMessage || "Submission failed.");
+      toast.error(err.response?.data?.message || err.userMessage || "Submission failed.");
     } finally {
       setSubmitting(false);
     }
@@ -673,49 +673,54 @@ const ChallengeDetails = () => {
             </div>
           ) : (
             /* ---- NORMAL SUBMIT PANEL ---- */
-            <>
-              <div className="px-4 py-3 border-t border-black/10 dark:border-white/10 shrink-0 space-y-3 bg-black/1">
-                <div className="flex items-center justify-between text-[11px] text-secondary">
-                  <span>
-                    {codeStats.lines} lines • {codeStats.characters} chars
-                  </span>
-                  <div className="flex gap-2">
-                    <button onClick={handleInsertStarter}>
-                      <FiRefreshCw />
-                    </button>
-                    <button onClick={handleCopyCode}>
-                      <FiClipboard />
-                    </button>
-                    <button onClick={handleClearDraft}>
-                      <FiTrash2 />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="px-4 py-3 border-t border-black/10 dark:border-white/10 shrink-0 space-y-3">
+            <div className="px-4 py-3 border-t border-black/10 dark:border-white/10 shrink-0 space-y-3">
+
+              {/* Row: language badge + stats + editor action icons */}
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex-1 focus-within:border-accent transition-colors">
-                    <FiGithub size={14} className="text-secondary shrink-0" />
-                    <input
-                      name="submissionRepositoryUrl"
-                      type="text"
-                      placeholder="GitHub repository URL (optional)"
-                      className="bg-transparent text-sm text-primary placeholder-white/25 focus:outline-none w-full"
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                    />
-                  </div>
+                  <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-accent/10 text-accent border border-accent/20">
+                    {LANGUAGE_OPTIONS.find((l) => l.key === language)?.label ?? language}
+                  </span>
+                  <span className="text-[11px] text-secondary">
+                    {codeStats.lines} lines · {codeStats.characters} chars
+                  </span>
                 </div>
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <FiSend size={14} />{" "}
-                  {submitting ? "Transmitting..." : "Submit Solution"}
-                </button>
+                <div className="flex gap-3 text-secondary">
+                  <button title="Reset to starter" onClick={handleInsertStarter} className="hover:text-primary transition-colors">
+                    <FiRefreshCw size={13} />
+                  </button>
+                  <button title="Copy code" onClick={handleCopyCode} className="hover:text-primary transition-colors">
+                    <FiClipboard size={13} />
+                  </button>
+                  <button title="Clear draft" onClick={handleClearDraft} className="hover:text-primary transition-colors">
+                    <FiTrash2 size={13} />
+                  </button>
+                </div>
               </div>
-            </>
+
+              {/* GitHub repo URL (optional) */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 focus-within:border-accent transition-colors">
+                <FiGithub size={14} className="text-secondary shrink-0" />
+                <input
+                  name="submissionRepositoryUrl"
+                  type="url"
+                  placeholder="GitHub repository URL (optional)"
+                  className="bg-transparent text-sm text-primary placeholder-white/25 focus:outline-none w-full"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                />
+              </div>
+
+              {/* Submit button */}
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <FiSend size={14} />
+                {submitting ? "Submitting…" : "Submit Solution"}
+              </button>
+            </div>
           )}
         </div>
       </div>
