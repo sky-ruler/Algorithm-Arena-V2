@@ -20,16 +20,7 @@ import {
   FiUser,
 } from "react-icons/fi";
 
-// CodeMirror Imports
-import CodeMirror from "@uiw/react-codemirror";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { java } from "@codemirror/lang-java";
-import { cpp } from "@codemirror/lang-cpp";
-import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+import CodeEditor from "../components/CodeEditor";
 
 // Local Project Imports
 import SkeletonCard from "../components/SkeletonCard";
@@ -37,80 +28,11 @@ import { api } from "../lib/api";
 import { USE_MOCK, mockChallenges, mockSubmissions } from "../lib/mockData";
 import { useAuth } from "../context/useAuth";
 
-// --- THEME & HIGHLIGHT DEFINITIONS ---
-
-const algoArenaDarkHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: "#bd93f9", fontWeight: "bold" },
-  { tag: t.string, color: "#ff6090" },
-  { tag: t.variableName, color: "#8be9fd" },
-  { tag: t.definition(t.variableName), color: "#f1fa8c" },
-  { tag: t.function(t.variableName), color: "#50fa7b" },
-  { tag: t.comment, color: "#6272a4", fontStyle: "italic" },
-  { tag: t.number, color: "#ffb86c" },
-  { tag: t.operator, color: "#44adff" },
-]);
-
-const arenaDarkTheme = EditorView.theme(
-  {
-    "&": { color: "white", backgroundColor: "transparent !important" },
-    ".cm-content": {
-      caretColor: "#ff6090",
-      fontFamily: "'Fira Code', 'JetBrains Mono', monospace",
-    },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      color: "#4b5563",
-      border: "none",
-    },
-    "&.cm-focused .cm-cursor": { borderLeftColor: "#ff6090" },
-    "&.cm-focused .cm-selectionBackground, ::selection": {
-      backgroundColor: "#ffffff1a",
-    },
-  },
-  { dark: true },
-);
-
-const algoArenaLightHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: "#d73a49", fontWeight: "bold" },
-  { tag: t.string, color: "#005cc5" },
-  { tag: t.variableName, color: "#24292e" },
-  { tag: t.function(t.variableName), color: "#6f42c1" },
-  { tag: t.comment, color: "#6a737d", fontStyle: "italic" },
-  { tag: t.number, color: "#e36209" },
-  { tag: t.operator, color: "#005cc5" },
-]);
-
-const arenaLightTheme = EditorView.theme(
-  {
-    "&": { color: "#24292e", backgroundColor: "white !important" },
-    ".cm-gutters": {
-      backgroundColor: "#f6f8fa",
-      color: "#afb8c1",
-      borderRight: "1px solid #d0d7de",
-    },
-    ".cm-activeLine": { backgroundColor: "#f6f8fa" },
-    "&.cm-focused .cm-selectionBackground, ::selection": {
-      backgroundColor: "#add6ff",
-    },
-  },
-  { dark: false },
-);
-
-// Fallback starters for challenges without LeetCode snippets
 const defaultStarterByLanguage = {
-  javascript:
-    "function solve(input) {\n  // TODO: implement\n  return input;\n}\n",
-  python: "def solve(data):\n    # TODO: implement\n    return data\n",
-  java: "class Solution {\n    public static void solve() {\n        // TODO: implement\n    }\n}\n",
-  cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // TODO: implement\n    return 0;\n}\n",
-};
-
-// Map LeetCode langSlugs to our editor language keys
-const langSlugToEditorLang = {
-  javascript: "javascript",
-  python3: "python",
-  java: "java",
-  cpp: "cpp",
+  javascript: `function main() {\n\n}\n\nmain();\n`,
+  python: `def main():\n    pass\n\nif __name__ == "__main__":\n    main()\n`,
+  java: `public class Main {\n\n    public static void main(String[] args) {\n\n    }\n}\n`,
+  cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n\n    return 0;\n}\n`,
 };
 
 const ChallengeDetails = () => {
@@ -154,7 +76,8 @@ const ChallengeDetails = () => {
     return () => observer.disconnect();
   }, []);
 
-  const codeSnippet = codeByLang[language] || "";
+  const codeSnippet =
+    codeByLang[language] ?? defaultStarterByLanguage[language] ?? "";
   const setCodeSnippet = (val) => {
     const newVal =
       typeof val === "function" ? val(codeByLang[language] || "") : val;
@@ -189,24 +112,6 @@ const ChallengeDetails = () => {
     );
   }, [draftKey, repoUrl, codeByLang, language]);
 
-  // Logic: Editor Extensions
-  const editorExtensions = useMemo(() => {
-    const langExt = {
-      javascript: [javascript({ jsx: true })],
-      python: [python()],
-      java: [java()],
-      cpp: [cpp()],
-    }[language] || [javascript()];
-
-    const themeExt = isDark
-      ? [arenaDarkTheme, syntaxHighlighting(algoArenaDarkHighlight)]
-      : [arenaLightTheme, syntaxHighlighting(algoArenaLightHighlight)];
-
-    const readOnlyExt = isReviewMode ? [EditorState.readOnly.of(true)] : [];
-
-    return [...langExt, ...themeExt, ...readOnlyExt];
-  }, [language, isDark, isReviewMode]);
-
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
     queryFn: async () => {
@@ -220,25 +125,6 @@ const ChallengeDetails = () => {
     },
   });
 
-  // Logic: Populate editor with starter snippets from DB
-  useEffect(() => {
-    if (!challengeQuery.data) return;
-    // Don't overwrite if user already has a draft saved
-    const hasDraft = localStorage.getItem(draftKey);
-    if (hasDraft) return;
-
-    const challenge = challengeQuery.data;
-    if (challenge.codeSnippets && challenge.codeSnippets.length > 0) {
-      const snippetMap = {};
-      challenge.codeSnippets.forEach((s) => {
-        const editorLang = langSlugToEditorLang[s.langSlug];
-        if (editorLang && !snippetMap[editorLang]) {
-          snippetMap[editorLang] = s.code;
-        }
-      });
-      setCodeByLang(snippetMap);
-    }
-  }, [challengeQuery.data, draftKey]);
 
   const historyQuery = useQuery({
     queryKey: ["my-submissions", id],
@@ -301,17 +187,8 @@ const ChallengeDetails = () => {
     [codeSnippet],
   );
 
-  // Build starter code from DB snippets or fall back to defaults
-  const getStarterCode = () => {
-    const challenge = challengeQuery.data;
-    if (challenge?.codeSnippets?.length > 0) {
-      const match = challenge.codeSnippets.find(
-        (s) => langSlugToEditorLang[s.langSlug] === language,
-      );
-      if (match) return match.code;
-    }
-    return defaultStarterByLanguage[language] || defaultStarterByLanguage.javascript;
-  };
+  const getStarterCode = () =>
+    defaultStarterByLanguage[language] ?? defaultStarterByLanguage.javascript;
 
   const handleInsertStarter = () => setCodeSnippet(getStarterCode());
 
@@ -548,21 +425,14 @@ const ChallengeDetails = () => {
             </select>
           </div>
 
-          {/* CodeMirror Instance */}
-          <div className="flex-1 min-h-0 overflow-hidden bg-black/10">
-            <CodeMirror
+          {/* Monaco Editor Instance */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CodeEditor
               value={codeSnippet}
-              height="100%"
-              extensions={editorExtensions}
-              onChange={isReviewMode ? undefined : (value) => setCodeSnippet(value)}
-              editable={!isReviewMode}
-              className="text-sm h-full"
-              basicSetup={{
-                lineNumbers: true,
-                bracketMatching: true,
-                closeBrackets: true,
-                autocompletion: false,
-              }}
+              onChange={(value) => setCodeSnippet(value ?? "")}
+              language={language}
+              isDark={isDark}
+              readOnly={isReviewMode}
             />
           </div>
 
