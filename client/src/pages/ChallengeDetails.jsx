@@ -34,6 +34,36 @@ import { useAuth } from "../context/useAuth";
 const JUDGE0_URL =
   import.meta.env.VITE_JUDGE0_API_URL || "https://ce.judge0.com";
 
+/**
+ * Converts a single test-case arg value to its stdin representation.
+ * Arrays → space-separated elements (standard competitive-programming format)
+ * so that Java's Scanner.nextInt() / nextLine() can consume them without
+ * an InputMismatchException.  Nested arrays produce one line per row.
+ */
+const formatArgForStdin = (a) => {
+  if (a == null) return "";
+  if (typeof a === "string") return a;
+  if (typeof a === "number" || typeof a === "boolean") return String(a);
+  if (Array.isArray(a)) {
+    if (a.length > 0 && Array.isArray(a[0])) {
+      // 2-D array: each inner array on its own line, space-separated
+      return a.map((inner) => (Array.isArray(inner) ? inner.join(" ") : String(inner))).join("\n");
+    }
+    return a.join(" ");
+  }
+  return JSON.stringify(a);
+};
+
+/**
+ * Converts a test-case's `args` field (which may be an array, a single
+ * number, a string, etc.) to a multi-line stdin string.
+ */
+const argsToStdin = (args) => {
+  if (args == null) return "";
+  const list = Array.isArray(args) ? args : [args];
+  return list.map(formatArgForStdin).join("\n");
+};
+
 const b64Encode = (str) =>
   btoa(
     encodeURIComponent(str).replace(/%([0-9A-F]{2})/gi, (_, hex) =>
@@ -534,7 +564,7 @@ const ChallengeDetails = () => {
 
           {/* ── Test / Result Panel (normal mode only) ── */}
           {!isReviewMode && (
-            <div className="h-44 flex flex-col border-t border-black/10 dark:border-white/10 shrink-0">
+            <div className="h-56 flex flex-col border-t border-black/10 dark:border-white/10 shrink-0">
               {/* Panel header */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-black/10 dark:border-white/10 shrink-0">
                 <div className="flex gap-0.5">
