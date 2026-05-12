@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -14,6 +14,8 @@ import {
   FiChevronLeft,
   FiSend,
   FiExternalLink,
+  FiCheckCircle,
+  FiZap,
   FiCheck,
   FiXCircle,
   FiMessageSquare,
@@ -21,18 +23,18 @@ import {
   FiPlay,
 } from "react-icons/fi";
 
+// Monaco & Shared Assets
 import CodeEditor from "../components/CodeEditor";
 import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../constants/languages";
 
 // Local Project Imports
 import SkeletonCard from "../components/SkeletonCard";
 import { api } from "../lib/api";
-import { USE_MOCK, mockChallenges, mockSubmissions } from "../lib/mockData";
+
 import { useAuth } from "../context/useAuth";
 
-// ─── Judge0 CE (free, no API key) ────────────────────────────────────────────
-const JUDGE0_URL =
-  import.meta.env.VITE_JUDGE0_API_URL || "https://ce.judge0.com";
+// --- JUDGE0 CONFIG ---
+const JUDGE0_URL = import.meta.env.VITE_JUDGE0_API_URL || "https://ce.judge0.com";
 
 /**
  * Converts a single test-case arg value to its stdin representation.
@@ -110,8 +112,9 @@ const ChallengeDetails = () => {
   const [language, setLanguage] = useState("javascript");
   const [submitting, setSubmitting] = useState(false);
   const [leftTab, setLeftTab] = useState("description");
+  const [rightTab, setRightTab] = useState("code"); // 'code', 'ai', 'tests'
 
-  // Input / Output panel state
+  // Input / Output panel state (Judge0)
   const [bottomTab, setBottomTab] = useState("input");
   const [stdin, setStdin] = useState("");
   const [selectedCaseIdx, setSelectedCaseIdx] = useState(0);
@@ -122,6 +125,11 @@ const ChallengeDetails = () => {
   const [reviewComment, setReviewComment] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [grading, setGrading] = useState(false);
+  
+  // Resizer state
+  const [leftWidth, setLeftWidth] = useState(45);
+  const containerRef = useRef(null);
+  
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute("data-theme") === "dark",
   );
@@ -141,6 +149,23 @@ const ChallengeDetails = () => {
     return () => observer.disconnect();
   }, []);
 
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    const handleMouseMove = (e) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      let newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+      if (newWidth < 20) newWidth = 20;
+      if (newWidth > 80) newWidth = 80;
+      setLeftWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
   const setCodeSnippet = (val) => {
     const newVal =
       typeof val === "function" ? val(codeByLang[language] || "") : val;
@@ -178,11 +203,6 @@ const ChallengeDetails = () => {
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
     queryFn: async () => {
-      if (USE_MOCK) {
-        const found = mockChallenges.find((c) => c._id === id);
-        if (!found) throw new Error("Challenge not found");
-        return found;
-      }
       const res = await api.get(`/api/challenges/${id}`);
       return res.data.data;
     },
@@ -193,14 +213,13 @@ const ChallengeDetails = () => {
     queryKey: ["my-submissions", id],
     enabled: !isReviewMode,
     queryFn: async () => {
-      if (USE_MOCK)
-        return mockSubmissions.filter((s) => s.challengeId._id === id);
       const res = await api.get(
         `/api/submissions/my-submissions?challengeId=${id}&limit=8`,
       );
       return res.data.data || [];
     },
   });
+
 
   // Review mode: fetch the submission being reviewed
   const reviewQuery = useQuery({
@@ -225,7 +244,6 @@ const ChallengeDetails = () => {
     }
   }, [isReviewMode, reviewQuery.data]);
 
-  // Review mode: grade a submission
   const handleGrade = async (status) => {
     setGrading(true);
     try {
@@ -273,8 +291,7 @@ const ChallengeDetails = () => {
     toast.success("Draft cleared");
   };
 
-  // ─── Judge0 run (CE free instance – wait=true, no API key) ──────────────────
-
+  // --- JUDGE0 RUN LOGIC ---
   const handleRun = async () => {
     if (!codeSnippet.trim()) return toast.error("No code to run.");
 
@@ -292,7 +309,7 @@ const ChallengeDetails = () => {
         : [{ label: "Run", stdinValue: stdin, expected: null }];
 
     setRunning(true);
-    setBottomTab("output");
+    setRightTab("tests"); // Switch to tests tab to see results
     setRunOutput(null);
 
     const langId = LANGUAGE_MAP[language]?.id ?? 63;
@@ -378,7 +395,7 @@ const ChallengeDetails = () => {
       );
       setRunOutput({ cases: results });
     } catch (err) {
-      toast.error(err.message || "Failed to reach Judge0.");
+      toast.error(err.message || "Failed to execute code.");
       setRunOutput({ error: err.message || "Execution engine unreachable." });
     } finally {
       setRunning(false);
@@ -386,33 +403,30 @@ const ChallengeDetails = () => {
   };
 
   const handleSubmit = async () => {
-    if (!codeSnippet.trim() && !repoUrl.trim())
-      return toast.error("Please write some code or add a GitHub link.");
+    if (!repoUrl && !codeSnippet.trim())
+      return toast.error("Please provide code or a GitHub link.");
     setSubmitting(true);
     try {
-      if (USE_MOCK) {
-        await new Promise((r) => setTimeout(r, 600));
-      } else {
-        await api.post("/api/submissions", {
-          challengeId: id,
-          code: codeSnippet.trim() || undefined,
-          language,
-          repositoryUrl: repoUrl.trim() || undefined,
-        });
-      }
-      toast.success("Solution submitted successfully.");
+      await api.post("/api/submissions", {
+        challengeId: id,
+        repositoryUrl: repoUrl.trim() || undefined,
+        code: codeSnippet.trim() || undefined,
+        language,
+      });
+      toast.success("Solution submitted.");
       setRepoUrl("");
       setCodeByLang({});
       localStorage.removeItem(draftKey);
       queryClient.invalidateQueries({ queryKey: ["my-submissions", id] });
     } catch (err) {
-      toast.error(err.response?.data?.message || err.userMessage || "Submission failed.");
+      toast.error(err.userMessage || "Submission failed.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Sanitize the HTML description for safe rendering
+
+  // Sanitize the HTML description
   const sanitizedDescription = useMemo(() => {
     if (!challengeQuery.data?.description) return "";
     return DOMPurify.sanitize(challengeQuery.data.description, {
@@ -493,9 +507,13 @@ const ChallengeDetails = () => {
       </div>
 
       {/* Main Split Layout */}
-      <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0 w-full">
+      <div 
+        ref={containerRef} 
+        className="flex flex-col lg:flex-row flex-1 min-h-0 w-full relative h-full"
+        style={{ '--left-width': `${leftWidth}%`, '--right-width': `calc(${100 - leftWidth}% - 12px)` }}
+      >
         {/* LEFT PANEL */}
-        <div className="flex-1 flex flex-col min-h-0 macos-glass rounded-xl overflow-hidden">
+        <div className="flex-1 lg:flex-none flex flex-col min-h-0 macos-glass rounded-xl overflow-hidden w-full lg:w-[var(--left-width)] lg:mb-0 mb-3 h-full">
           <div className="flex border-b border-black/10 dark:border-white/10 shrink-0">
             <button
               className={`px-4 py-3 text-sm font-semibold relative ${leftTab === "description" ? "text-primary" : "text-secondary"}`}
@@ -517,17 +535,24 @@ const ChallengeDetails = () => {
                 <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />
               )}
             </button>
+            <button
+              className={`px-4 py-3 text-sm font-semibold relative ${leftTab === "ask" ? "text-primary" : "text-secondary"}`}
+              onClick={() => setLeftTab("ask")}
+            >
+              <FiSend className="inline mr-2" />
+              Ask a Doubt
+              {leftTab === "ask" && (
+                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />
+              )}
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-5">
             {leftTab === "description" ? (
               <div className="space-y-4">
-                {/* Rendered HTML Description */}
-                <div
+                <div 
                   className="leetcode-description text-sm leading-relaxed text-primary/90"
-                  dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+                  dangerouslySetInnerHTML={{ __html: sanitizedDescription || challenge.description }}
                 />
-
-                {/* Tags & Meta */}
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-black/10 dark:border-white/10">
                   <span
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${difficultyBg} ${difficultyColor}`}
@@ -537,17 +562,9 @@ const ChallengeDetails = () => {
                   <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-accent/10 text-accent">
                     {challenge.points} XP
                   </span>
-                  {challenge.tags?.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-400 dark:text-blue-300"
-                    >
-                      {tag}
-                    </span>
-                  ))}
                 </div>
               </div>
-            ) : (
+            ) : leftTab === "submissions" ? (
               <div className="space-y-3">
                 {historyQuery.data?.map((sub) => (
                   <Link
@@ -571,33 +588,63 @@ const ChallengeDetails = () => {
                   </Link>
                 ))}
               </div>
-            )}
+            ) : leftTab === "ask" ? (
+              <div className="h-full flex flex-col">
+                <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                    <p className="text-xs text-secondary font-bold mb-1">Clan AI Assistant</p>
+                    <p className="text-sm text-primary">How can I help you with this challenge?</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-auto">
+                  <input type="text" className="field-input flex-1" placeholder="Type your doubt here..." />
+                  <button className="bg-accent text-white p-2.5 rounded-lg hover:bg-accent/80 transition-colors">
+                    <FiSend />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* RIGHT PANEL - Editor */}
-        <div className="lg:w-1/2 flex flex-col min-h-0 macos-glass rounded-xl overflow-hidden border border-white/5">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10 shrink-0">
-            <div className="flex items-center gap-2">
-              <FiCode className="text-accent" />
-              <span className="text-sm font-semibold">
-                {isReviewMode ? "Submitted Code (Read-only)" : "Code Editor"}
-              </span>
-              {isReviewMode && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/15 text-yellow-500 uppercase tracking-wider">
-                  Review Mode
-                </span>
-              )}
+        {/* Resizer */}
+        <div 
+          className="hidden lg:flex w-3 cursor-col-resize justify-center items-center group shrink-0 z-10 hover:bg-white/5 transition-colors"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="w-1 h-16 bg-white/10 group-hover:bg-accent rounded-full transition-colors" />
+        </div>
+
+        {/* RIGHT PANEL - Editor / AI / Tests */}
+        <div className="flex-1 lg:flex-none flex flex-col min-h-0 macos-glass rounded-xl overflow-hidden border border-white/5 w-full lg:w-[var(--right-width)] h-full">
+          <div className="flex items-center justify-between pr-4 border-b border-black/10 dark:border-white/10 shrink-0">
+            <div className="flex">
+              <button className={`px-4 py-3 text-sm font-semibold relative ${rightTab === "code" ? "text-primary" : "text-secondary"}`} onClick={() => setRightTab("code")}>
+                <FiCode className="inline mr-2" /> Code
+                {rightTab === "code" && <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />}
+              </button>
+              <button className={`px-4 py-3 text-sm font-semibold relative ${rightTab === "ai" ? "text-primary" : "text-secondary"}`} onClick={() => setRightTab("ai")}>
+                <FiZap className="inline mr-2" /> AI Review
+                {rightTab === "ai" && <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />}
+              </button>
+              <button className={`px-4 py-3 text-sm font-semibold relative ${rightTab === "tests" ? "text-primary" : "text-secondary"}`} onClick={() => setRightTab("tests")}>
+                <FiCheckCircle className="inline mr-2" /> Result
+                {rightTab === "tests" && <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />}
+              </button>
             </div>
-            <select
-              className="bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg text-xs px-2 py-1 text-primary focus:outline-none"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              {LANGUAGE_OPTIONS.map(({ key, label }) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
+            {rightTab === "code" && (
+              <select
+                className="bg-black/5 dark:bg-[#1a1a24] border border-black/10 dark:border-white/10 rounded-lg text-xs px-2 py-1 text-primary focus:outline-none"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                {LANGUAGE_OPTIONS.map(opt => (
+                  <option key={opt.key} value={opt.key} className="bg-white dark:bg-[#1a1a24] text-black dark:text-white">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Monaco Editor Instance */}
@@ -952,16 +999,22 @@ const ChallengeDetails = () => {
                   onChange={(e) => setRepoUrl(e.target.value)}
                 />
               </div>
-
-              {/* Submit button */}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <FiSend size={14} />
-                {submitting ? "Submitting…" : "Submit Solution"}
-              </button>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleRun}
+                  disabled={running}
+                  className="btn-secondary flex-1 py-2.5 flex items-center justify-center gap-2 text-xs"
+                >
+                  <FiPlay size={13} /> {running ? "Running..." : "Run Code"}
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2 text-xs disabled:opacity-50"
+                >
+                  <FiSend size={13} /> {submitting ? "Transmitting..." : "Submit Solution"}
+                </button>
+              </div>
             </div>
           )}
         </div>
