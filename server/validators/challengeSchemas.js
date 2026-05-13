@@ -7,15 +7,15 @@ const challengeIdParamsSchema = {
 };
 
 const codeSnippetSchema = z.object({
-  lang: z.string(),
-  langSlug: z.string(),
-  code: z.string(),
+  lang: z.string().trim().min(1),
+  langSlug: z.string().trim().min(1),
+  code: z.string().min(1),
 });
 
 const testCaseSchema = z.object({
-  label: z.string(),
+  label: z.string().trim().min(1),
   args: z.any(),
-  expected: z.string(),
+  expected: z.string().min(1),
 });
 
 const challengeCreateSchema = {
@@ -23,12 +23,14 @@ const challengeCreateSchema = {
     title: z.string().trim().min(3).max(200),
     description: z.string().trim().min(10),
     difficulty: z.enum(['Easy', 'Medium', 'Hard']).default('Easy'),
-    points: z.coerce.number().int().positive().max(10000),
+    points: z.coerce.number().int().positive().max(10000).default(100),
     category: z.string().trim().min(2).max(80).default('Logic'),
     tags: z.array(z.string().trim()).optional().default([]),
     codeSnippets: z.array(codeSnippetSchema).optional().default([]),
     functionName: z.string().trim().optional().default(''),
     testCases: z.array(testCaseSchema).optional().default([]),
+    link: z.string().url().optional().or(z.literal('')),
+    questionSetId: z.string().length(24).optional(), 
   }),
 };
 
@@ -44,6 +46,8 @@ const challengeUpdateSchema = {
       codeSnippets: z.array(codeSnippetSchema).optional(),
       functionName: z.string().trim().optional(),
       testCases: z.array(testCaseSchema).optional(),
+      link: z.string().url().optional().or(z.literal('')),
+      questionSetId: z.string().length(24).optional(),
     })
     .refine((obj) => Object.keys(obj).length > 0, 'At least one field is required'),
 };
@@ -66,4 +70,3 @@ module.exports = {
   challengeUpdateSchema,
   challengeQuerySchema,
 };
-

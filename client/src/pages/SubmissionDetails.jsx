@@ -89,7 +89,7 @@ const SubmissionDetails = () => {
   }
 
   const submission = submissionQuery.data;
-  const hasReviewComment = submission.reviewComment && submission.status === 'Rejected';
+  const hasReviewComment = submission.feedback && submission.status === 'Rejected';
 
   return (
     <div
@@ -220,7 +220,7 @@ const SubmissionDetails = () => {
                   </div>
                 )}
                 <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/10 text-sm text-primary leading-relaxed whitespace-pre-wrap">
-                  {submission.reviewComment}
+                  {submission.feedback}
                 </div>
               </div>
             </div>

@@ -23,6 +23,7 @@ const submissionCreateSchema = {
 const submissionUpdateSchema = {
   body: z.object({
     status: z.enum(['Pending', 'Accepted', 'Rejected']),
+    feedback: z.string().trim().min(1).max(2000).optional(),
   }),
 };
 
