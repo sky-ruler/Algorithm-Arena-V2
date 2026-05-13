@@ -217,7 +217,7 @@ const ChallengeDetails = () => {
     try {
       await api.put(`/api/submissions/${reviewSubmissionId}`, {
         status,
-        reviewComment: status === "Rejected" ? reviewComment.trim() || undefined : undefined,
+        feedback: status === "Rejected" ? reviewComment.trim() || undefined : undefined,
       });
       toast.success(`Submission ${status.toLowerCase()}`);
       queryClient.invalidateQueries({ queryKey: ["admin-submissions"] });
