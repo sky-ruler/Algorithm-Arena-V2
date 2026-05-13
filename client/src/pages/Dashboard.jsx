@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   FiArrowRight, FiZap, FiFilter, FiSearch,
   FiCpu, FiAlertTriangle, FiActivity,
-  FiTarget, FiCheckCircle, FiClock, FiTrendingUp,
+  FiTarget, FiCheckCircle, FiClock, FiTrendingUp, FiMessageSquare,
 } from "react-icons/fi";
 import { api } from "../lib/api";
 import { useAuth } from "../context/useAuth";
@@ -352,6 +352,11 @@ const Dashboard = () => {
                       <span className={`ml-3 text-[9px] font-black px-2 py-0.5 rounded border flex-shrink-0 ${badgeCls}`}>
                         {badgeLabel}
                       </span>
+                      {wa && sub.feedback && (
+                        <span className="ml-1 flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 flex-shrink-0">
+                          <FiMessageSquare size={9} />
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
