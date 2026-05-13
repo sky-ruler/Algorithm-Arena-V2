@@ -1,5 +1,4 @@
-import React, { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -7,18 +6,13 @@ import {
   FiPlus, FiFileText, FiFolder, FiBell, FiSearch, FiEdit2, FiTrash2, FiAlertCircle, FiCheck, FiX, FiInfo, FiEye
 } from 'react-icons/fi';
 import { clsx } from 'clsx';
-import { api } from '../lib/api';
 
-import BaseCard from '../components/BaseCard';
 import PageHeader from '../components/PageHeader';
-import SkeletonCard from '../components/SkeletonCard';
-import EmptyState from '../components/EmptyState';
-import MemberHoverCard from '../components/MemberHoverCard';
 
 // --- Subcomponents for Tabs ---
-
 import DashboardTab from './admin/DashboardTab';
 import QuestionSetsTab from './admin/QuestionSetsTab';
+import ChallengesTab from './admin/ChallengesTab';
 import ClanManagerTab from './admin/ClanManagerTab';
 import NoticeBoardTab from './admin/NoticeBoardTab';
 import ResourcesTab from './admin/ResourcesTab';
@@ -27,12 +21,12 @@ import ReviewTab from './admin/ReviewTab';
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const queryClient = useQueryClient();
 
   const tabs = [
     { id: 'dashboard', label: 'Overview', icon: FiActivity },
     { id: 'review', label: 'Review Work', icon: FiEye },
     { id: 'sets', label: 'Question Sets', icon: FiCode },
+    { id: 'challenges', label: 'Challenges', icon: FiZap },
     { id: 'clans', label: 'Clan Manager', icon: FiShield },
     { id: 'notices', label: 'Notice Board', icon: FiBell },
     { id: 'resources', label: 'Resources', icon: FiFolder },
@@ -87,6 +81,7 @@ const AdminPanel = () => {
           {activeTab === 'dashboard' && <DashboardTab setActiveTab={setActiveTab} />}
           {activeTab === 'review' && <ReviewTab />}
           {activeTab === 'sets' && <QuestionSetsTab />}
+          {activeTab === 'challenges' && <ChallengesTab />}
           {activeTab === 'clans' && <ClanManagerTab />}
           {activeTab === 'notices' && <NoticeBoardTab />}
           {activeTab === 'resources' && <ResourcesTab />}
