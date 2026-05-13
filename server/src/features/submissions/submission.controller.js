@@ -85,8 +85,9 @@ const getSubmissions = async (req, res, next) => {
     const [total, submissions] = await Promise.all([
       Submission.countDocuments(filter),
       Submission.find(filter)
-        .populate('userId', 'username email role')
+        .populate('userId', 'username email role clan')
         .populate('challengeId', 'title difficulty points')
+        .populate('reviewedBy', 'username role')
         .sort(sort)
         .skip(skip)
         .limit(limit),
@@ -224,8 +225,9 @@ const getLeaderboard = async (req, res, next) => {
 const getSubmissionById = async (req, res, next) => {
   try {
     const submission = await Submission.findById(req.params.id)
-      .populate('userId', 'username email role')
-      .populate('challengeId', 'title difficulty points');
+      .populate('userId', 'username email role clan')
+      .populate('challengeId', 'title difficulty points')
+      .populate('reviewedBy', 'username role');
 
     if (!submission) {
       res.status(404);
@@ -233,9 +235,9 @@ const getSubmissionById = async (req, res, next) => {
     }
 
     const isOwner = submission.userId && submission.userId._id.toString() === req.user.id.toString();
-    const isAdmin = req.user.role === 'admin';
+    const isPrivileged = ['admin', 'clan-chief'].includes(req.user.role);
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isPrivileged) {
       res.status(403);
       throw new Error('Not authorized to view this submission');
     }
@@ -255,7 +257,11 @@ const updateSubmissionStatus = async (req, res, next) => {
       throw new Error(`Status must be one of: ${VALID_STATUSES.join(', ')}`);
     }
 
-    const updateData = { status };
+    const updateData = {
+      status,
+      reviewedBy: req.user.id,
+      reviewedAt: new Date(),
+    };
     if (feedback !== undefined) {
       updateData.feedback = feedback;
     }
@@ -266,7 +272,8 @@ const updateSubmissionStatus = async (req, res, next) => {
       { new: true, runValidators: true }
     )
       .populate('userId', 'username email role points solvedProblems')
-      .populate('challengeId', 'title difficulty points');
+      .populate('challengeId', 'title difficulty points')
+      .populate('reviewedBy', 'username role');
 
     if (!submission) {
       res.status(404);

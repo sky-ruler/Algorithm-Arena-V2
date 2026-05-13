@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiUsers, FiShield, FiActivity, FiCode, FiPercent, FiClock,
-  FiPlus, FiFileText, FiFolder, FiBell, FiSearch, FiEdit2, FiTrash2, FiAlertCircle, FiCheck, FiX, FiInfo
+  FiPlus, FiFileText, FiFolder, FiBell, FiSearch, FiEdit2, FiTrash2, FiAlertCircle, FiCheck, FiX, FiInfo, FiEye
 } from 'react-icons/fi';
 import { clsx } from 'clsx';
 import { api } from '../lib/api';
@@ -23,6 +23,7 @@ import ClanManagerTab from './admin/ClanManagerTab';
 import NoticeBoardTab from './admin/NoticeBoardTab';
 import ResourcesTab from './admin/ResourcesTab';
 import MembersTab from './admin/MembersTab';
+import ReviewTab from './admin/ReviewTab';
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -30,6 +31,7 @@ const AdminPanel = () => {
 
   const tabs = [
     { id: 'dashboard', label: 'Overview', icon: FiActivity },
+    { id: 'review', label: 'Review Work', icon: FiEye },
     { id: 'sets', label: 'Question Sets', icon: FiCode },
     { id: 'clans', label: 'Clan Manager', icon: FiShield },
     { id: 'notices', label: 'Notice Board', icon: FiBell },
@@ -83,6 +85,7 @@ const AdminPanel = () => {
           transition={{ duration: 0.25 }}
         >
           {activeTab === 'dashboard' && <DashboardTab setActiveTab={setActiveTab} />}
+          {activeTab === 'review' && <ReviewTab />}
           {activeTab === 'sets' && <QuestionSetsTab />}
           {activeTab === 'clans' && <ClanManagerTab />}
           {activeTab === 'notices' && <NoticeBoardTab />}
