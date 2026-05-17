@@ -468,11 +468,15 @@ const Dashboard = () => {
                               </span>
                             ))}
                           {(!ch.tags || ch.tags.length === 0) &&
-                            ch.category && (
-                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/5 text-secondary border border-white/5">
-                                {ch.category}
+                            ch.category &&
+                            ch.category.split(',').slice(0, 3).map((cat, idx) => (
+                              <span 
+                                key={`cat-${idx}`}
+                                className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/5 text-secondary border border-white/5"
+                              >
+                                {cat.trim()}
                               </span>
-                            )}
+                            ))}
                         </div>
                       </ChallengeCard>
                     </Link>
