@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Card from '../components/Card';
 import { api } from '../lib/api';
 import { useAuth } from '../context/useAuth';
+import Logo from '../components/Logo';
 
 const Login = ({ onLoginSuccess }) => {
   const [formData, setFormData] = useState({ email: '', password: '' });
