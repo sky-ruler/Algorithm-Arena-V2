@@ -21,7 +21,19 @@ const {
   challengeQuerySchema,
 } = require('../../../validators/challengeSchemas');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const ALLOWED_MIME_TYPES = new Set(['text/csv', 'text/plain', 'application/vnd.ms-excel']);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter(_req, file, cb) {
+    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Only CSV files are accepted.`));
+    }
+  },
+});
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 

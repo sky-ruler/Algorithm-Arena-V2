@@ -83,7 +83,7 @@ const Resources = () => {
               <a 
                 href={res.url} 
                 target="_blank" 
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="mt-auto flex items-center justify-center gap-2 w-full py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm font-bold transition-colors"
               >
                 <FiDownload /> Access File

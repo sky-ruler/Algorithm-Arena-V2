@@ -1,13 +1,25 @@
 const User = require('./User.model');
 const { sendSuccess } = require('../../../utils/response');
+const { escapeHtml } = require('../../../utils/escapeHtml');
 
 // @desc    Get all users
 // @route   GET /api/users
 // @access  Private/Admin
 const getUsers = async (req, res, next) => {
   try {
-    const users = await User.find({}).select('-password').sort({ createdAt: -1 });
-    return sendSuccess(res, { data: users });
+    const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const skip  = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      User.find({}).select('-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments({}),
+    ]);
+
+    return sendSuccess(res, {
+      data: users,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    });
   } catch (err) {
     return next(err);
   }
@@ -77,13 +89,16 @@ const warnUser = async (req, res, next) => {
     await user.save();
 
     const { sendEmail } = require('../../../utils/emailService');
+    const { logger } = require('../../../utils/logger');
+    const safeUsername = escapeHtml(user.username);
+    const safeMessage = escapeHtml(message || 'Please improve your activity and adherence to clan rules.');
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ef4444; border-radius: 8px;">
         <h2 style="color: #ef4444;">Official Warning</h2>
-        <p>Dear ${user.username},</p>
+        <p>Dear ${safeUsername},</p>
         <p>You have received a warning from your Clan Chief/Admin:</p>
         <blockquote style="border-left: 4px solid #ef4444; padding-left: 10px; color: #555;">
-          ${message || 'Please improve your activity and adherence to clan rules.'}
+          ${safeMessage}
         </blockquote>
         <p>Please log in to the Algorithm Arena and address this immediately.</p>
       </div>
