@@ -93,15 +93,13 @@ const SubmissionDetails = () => {
 
   return (
     <div
-      className="flex flex-col px-4 sm:px-6 lg:px-8"
+      className="flex flex-col w-full"
       style={{
-        height: 'calc(100vh - 6rem)',
-        width: '100vw',
-        marginLeft: 'calc(-50vw + 50%)',
+        height: 'calc(100vh - 8rem)',
       }}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 pb-3 border-b border-black/10 dark:border-white/10 mb-3 shrink-0">
+      <div className="flex items-center gap-3 pb-3 border-b border-black/10 dark:border-white/10 mb-3 shrink-0 px-4 sm:px-6 lg:px-8 pt-4">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-secondary hover:text-primary transition-colors text-sm"
@@ -124,7 +122,7 @@ const SubmissionDetails = () => {
       </div>
 
       {/* Main Split Layout */}
-      <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0 w-full">
+      <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0 w-full px-4 sm:px-6 lg:px-8 pb-4">
         {/* LEFT PANEL — Code Viewer */}
         <div className="flex-1 flex flex-col min-h-0 macos-glass rounded-xl overflow-hidden border border-white/5">
           <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10 shrink-0">
@@ -182,7 +180,7 @@ const SubmissionDetails = () => {
               <a
                 href={submission.repositoryUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 text-accent text-sm font-medium hover:underline"
               >
                 <FiGithub size={14} />

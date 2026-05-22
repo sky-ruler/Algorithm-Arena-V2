@@ -20,19 +20,25 @@ const Layout = ({ onLogout }) => {
       <Navbar onLogout={onLogout} />
 
       {/* 3. Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        <AnimatePresence mode="wait" initial={false}>
-          <MotionContainer
-            key={location.pathname}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.28, ease: "easeOut" }}
-          >
-            <Outlet />
-          </MotionContainer>
-        </AnimatePresence>
-      </main>
+      {(() => {
+        const isFullWidth = location.pathname.startsWith("/challenge/") || location.pathname.startsWith("/submission/");
+        return (
+          <main className={`mx-auto flex-1 w-full ${isFullWidth ? "max-w-none px-0 py-0" : "max-w-7xl px-4 sm:px-6 lg:px-8 py-8"}`}>
+            <AnimatePresence mode="wait" initial={false}>
+              <MotionContainer
+                key={location.pathname}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
+                className="w-full h-full flex flex-col"
+              >
+                <Outlet />
+              </MotionContainer>
+            </AnimatePresence>
+          </main>
+        );
+      })()}
 
       {/* Footer */}
       <footer

@@ -3,6 +3,7 @@ const Submission = require('./Submission.model');
 const Challenge = require('../challenges/Challenge.model');
 const { sendSuccess } = require('../../../utils/response');
 const { logAudit } = require('../../../utils/audit');
+const { escapeHtml } = require('../../../utils/escapeHtml');
 
 const VALID_STATUSES = ['Pending', 'Accepted', 'Rejected'];
 
@@ -137,15 +138,18 @@ const getMySubmissions = async (req, res, next) => {
 const getLeaderboard = async (req, res, next) => {
   try {
     const { window = 'all', page = 1, limit = 20 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
 
     const match = { status: 'Accepted' };
     if (window !== 'all') {
       const days = window === '7d' ? 7 : 30;
-      const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      match.submittedAt = { $gte: fromDate };
+      match.submittedAt = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
     }
 
-    const pipeline = [
+    // All pagination and ranking happen inside MongoDB — nothing is loaded into Node RAM.
+    // $setWindowFields computes dense rank at the DB level (requires MongoDB 5.0+).
+    // $facet returns total count + the current page in a single round-trip.
+    const [result] = await Submission.aggregate([
       { $match: match },
       {
         $lookup: {
@@ -181,40 +185,31 @@ const getLeaderboard = async (req, res, next) => {
           totalPoints: 1,
         },
       },
-    ];
+      {
+        $setWindowFields: {
+          sortBy: { totalPoints: -1 },
+          output: { rank: { $denseRank: {} } },
+        },
+      },
+      {
+        $facet: {
+          metadata: [{ $count: 'total' }],
+          data: [{ $skip: skip }, { $limit: Number(limit) }],
+        },
+      },
+    ]);
 
-    const full = await Submission.aggregate(pipeline);
-    const ranked = [];
-    let prevRank = 0;
-    let prevPoints = null;
-    let prevSolved = null;
-
-    full.forEach((entry, idx) => {
-      const isTie = prevPoints === entry.totalPoints && prevSolved === entry.solvedCount;
-      const rank = isTie ? prevRank : idx + 1;
-
-      prevRank = rank;
-      prevPoints = entry.totalPoints;
-      prevSolved = entry.solvedCount;
-
-      ranked.push({
-        ...entry,
-        rank,
-      });
-    });
-
-    const total = ranked.length;
-    const start = (page - 1) * limit;
-    const data = ranked.slice(start, start + limit);
+    const total = result?.metadata[0]?.total ?? 0;
+    const data = result?.data ?? [];
 
     return sendSuccess(res, {
       data,
       meta: {
         window,
-        page,
-        limit,
+        page: Number(page),
+        limit: Number(limit),
         total,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages: Math.ceil(total / Number(limit)) || 1,
       },
     });
   } catch (err) {
@@ -317,21 +312,26 @@ const updateSubmissionStatus = async (req, res, next) => {
 
     if (submission.userId?.email) {
       const { sendEmail } = require('../../../utils/emailService');
-      const actionText = status === 'Accepted' ? 'approved' : 'rejected';
+      const { logger } = require('../../../utils/logger');
       const color = status === 'Accepted' ? '#22c55e' : '#ef4444';
-      
+      // Escape all user-supplied values before embedding in HTML
+      const safeUsername = escapeHtml(submission.userId.username);
+      const safeTitle = escapeHtml(submission.challengeId?.title || 'Unknown Challenge');
+      const safeFeedback = feedback ? escapeHtml(feedback) : null;
+      const safeStatus = escapeHtml(status);
+
       const emailHTML = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f1115; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #1f2937;">
-          <h2 style="color: ${color}; text-transform: uppercase; letter-spacing: 2px;">Submission ${status}</h2>
-          <p style="color: #9ca3af; font-size: 16px;">Hello <strong>${submission.userId.username}</strong>,</p>
+          <h2 style="color: ${color}; text-transform: uppercase; letter-spacing: 2px;">Submission ${safeStatus}</h2>
+          <p style="color: #9ca3af; font-size: 16px;">Hello <strong>${safeUsername}</strong>,</p>
           <p style="color: #9ca3af; font-size: 16px; line-height: 1.6;">
             Your Clan Chief has reviewed your code submission for the challenge:
-            <br/><strong style="color: #ffffff;">${submission.challengeId?.title || 'Unknown Challenge'}</strong>
+            <br/><strong style="color: #ffffff;">${safeTitle}</strong>
           </p>
           <div style="background-color: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 0; font-size: 14px; color: #d1d5db;"><strong>Status:</strong> <span style="color: ${color}; font-weight: bold;">${status}</span></p>
+            <p style="margin: 0; font-size: 14px; color: #d1d5db;"><strong>Status:</strong> <span style="color: ${color}; font-weight: bold;">${safeStatus}</span></p>
             ${status === 'Accepted' ? `<p style="margin: 10px 0 0 0; font-size: 14px; color: #d1d5db;"><strong>+${submission.challengeId?.points || 0} XP</strong> has been awarded to your account!</p>` : ''}
-            ${feedback ? `<hr style="border-color: #374151; my: 10px;"/><p style="margin: 10px 0 0 0; font-size: 14px; color: #d1d5db;"><strong>Chief's Feedback:</strong><br/><br/><em>"${feedback}"</em></p>` : ''}
+            ${safeFeedback ? `<hr style="border-color: #374151;"/><p style="margin: 10px 0 0 0; font-size: 14px; color: #d1d5db;"><strong>Chief's Feedback:</strong><br/><br/><em>&ldquo;${safeFeedback}&rdquo;</em></p>` : ''}
           </div>
           <p style="color: #9ca3af; font-size: 14px; margin-top: 30px; text-align: center;">Keep coding and progressing!<br/>- The Algorithm Arena Team</p>
         </div>
@@ -339,9 +339,9 @@ const updateSubmissionStatus = async (req, res, next) => {
 
       sendEmail(
         submission.userId.email,
-        `Code Submission ${status}: ${submission.challengeId?.title || 'Update'}`,
+        `Code Submission ${safeStatus}: ${safeTitle}`,
         emailHTML
-      ).catch(err => console.error('Failed to send review email:', err));
+      ).catch(err => logger.error('Failed to send review email', { error: err }));
     }
 
     return sendSuccess(res, {

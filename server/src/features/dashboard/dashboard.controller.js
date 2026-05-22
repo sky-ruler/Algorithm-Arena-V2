@@ -4,6 +4,7 @@ const Submission = require('../submissions/Submission.model');
 const User = require('../users/User.model');
 const Clan = require('../clans/Clan.model');
 const { sendSuccess } = require('../../../utils/response');
+const { getUserRank } = require('../../../utils/leaderboard');
 
 const getDashboardSummary = async (req, res, next) => {
   try {
@@ -13,39 +14,20 @@ const getDashboardSummary = async (req, res, next) => {
       Submission.distinct('challengeId', { userId: req.user.id, status: 'Accepted' }),
     ]);
 
-    const leaderboard = await Submission.aggregate([
-      { $match: { status: 'Accepted' } },
-      {
-        $lookup: {
-          from: 'challenges',
-          localField: 'challengeId',
-          foreignField: '_id',
-          as: 'challenge',
-        },
-      },
-      { $unwind: '$challenge' },
-      {
-        $group: {
-          _id: '$userId',
-          solvedCount: { $sum: 1 },
-          totalPoints: { $sum: '$challenge.points' },
-        },
-      },
-      { $sort: { totalPoints: -1, solvedCount: -1 } },
+    const [rank, recentActivity] = await Promise.all([
+      getUserRank(new mongoose.Types.ObjectId(req.user.id)),
+      Submission.find({ userId: req.user.id })
+        .populate('challengeId', 'title difficulty points')
+        .sort({ submittedAt: -1 })
+        .limit(5),
     ]);
-
-    const rank = leaderboard.findIndex((entry) => entry._id.toString() === req.user.id.toString());
-    const recentActivity = await Submission.find({ userId: req.user.id })
-      .populate('challengeId', 'title difficulty points')
-      .sort({ submittedAt: -1 })
-      .limit(5);
 
     return sendSuccess(res, {
       data: {
         totalChallenges,
         solved: solvedDistinct.length,
         pending,
-        rank: rank === -1 ? null : rank + 1,
+        rank,
         recentActivity,
       },
     });
@@ -146,16 +128,8 @@ const getProfileStats = async (req, res, next) => {
     // [I'll skip repeating the intermediate lines to keep the replacement clean if possible, 
     // but I need to make sure I don't break the existing code. I'll provide the full block for clarity.]
     
-    // Calculate Rank
-    const leaderboard = await Submission.aggregate([
-      { $match: { status: 'Accepted' } },
-      { $lookup: { from: 'challenges', localField: 'challengeId', foreignField: '_id', as: 'challenge' } },
-      { $unwind: '$challenge' },
-      { $group: { _id: '$userId', totalPoints: { $sum: '$challenge.points' } } },
-      { $sort: { totalPoints: -1 } },
-    ]);
-    const rankIndex = leaderboard.findIndex((entry) => entry._id.toString() === req.user.id.toString());
-    const rank = rankIndex !== -1 ? rankIndex + 1 : null;
+    // Calculate Rank using shared utility (DB-level, no full array in RAM)
+    const rank = await getUserRank(userId);
 
     // Calculate Heatmap Data
     const heatmapAggregation = await Submission.aggregate([
@@ -369,16 +343,8 @@ const getUserProfile = async (req, res, next) => {
       .sort({ submittedAt: -1 })
       .limit(10);
 
-    // Global rank
-    const leaderboard = await Submission.aggregate([
-      { $match: { status: 'Accepted' } },
-      { $lookup: { from: 'challenges', localField: 'challengeId', foreignField: '_id', as: 'challenge' } },
-      { $unwind: '$challenge' },
-      { $group: { _id: '$userId', totalPoints: { $sum: '$challenge.points' } } },
-      { $sort: { totalPoints: -1 } },
-    ]);
-    const rankIndex = leaderboard.findIndex((e) => e._id.toString() === userId.toString());
-    const rank = rankIndex !== -1 ? rankIndex + 1 : null;
+    // Global rank using shared utility (DB-level, no full array in RAM)
+    const rank = await getUserRank(userId);
 
     // Send back formatted data matching what the frontend expects
     return sendSuccess(res, {
