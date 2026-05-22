@@ -198,9 +198,9 @@ const Leaderboard = () => {
         backUrl="/dashboard"
       />
 
-      <div className="grid grid-cols-7 gap-4 macos-glass p-4 lg:flex lg:items-center lg:gap-4">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap lg:flex-nowrap items-stretch sm:items-center gap-4 macos-glass p-4">
         {/* 1. Entity Type Toggle (Individual vs Clans) */}
-        <div className="segmented inline-flex w-full md:w-auto">
+        <div className="segmented inline-flex w-full sm:w-auto">
           <button
             type="button"
             className={`segmented-btn flex-1 whitespace-nowrap flex items-center justify-center gap-2 ${leaderType === "individual" ? "active" : ""}`}
@@ -218,7 +218,7 @@ const Leaderboard = () => {
         </div>
 
         {/* 2. Global Time Window Toggle */}
-        <div className="segmented inline-flex w-full md:w-auto overflow-x-auto">
+        <div className="segmented inline-flex w-full sm:w-auto overflow-x-auto">
           <button
             type="button"
             className={`segmented-btn flex-1 whitespace-nowrap ${filters.window === "all" ? "active" : ""}`}
@@ -247,7 +247,7 @@ const Leaderboard = () => {
         </div>
 
         {/* 3. Search Feature */}
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[200px] w-full sm:w-auto">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
           <input
             name="leaderboardSearch"
@@ -265,7 +265,7 @@ const Leaderboard = () => {
         {/* 4. Results Limit Dropdown */}
         <select
           name="leaderboardLimit"
-          className="field-select px-1 text-xs w-lg-auto md:w-auto"
+          className="field-select px-3 text-xs w-full sm:w-auto"
           value={filters.limit}
           onChange={(e) =>
             setFilters((prev) => ({

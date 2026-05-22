@@ -2,7 +2,8 @@ const express = require('express');
 const { register, login, refresh, logout, logoutAll, getMe, updateMe } = require('./auth.controller');
 const { protect } = require('../../../middleware/auth');
 const { validate } = require('../../../middleware/validate');
-const { registerSchema, loginSchema, refreshSchema } = require('../../../validators/authSchemas');
+const { registerSchema, loginSchema, refreshSchema, updateMeSchema } = require('../../../validators/authSchemas');
+
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ router.post('/refresh', validate(refreshSchema), refresh);
 router.post('/logout', logout);
 router.post('/logout-all', protect, logoutAll);
 router.get('/me', protect, getMe);
-router.put('/update-me', protect, updateMe);
+router.put('/update-me', protect, validate(updateMeSchema), updateMe);
 
 module.exports = router;
 

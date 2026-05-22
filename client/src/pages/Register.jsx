@@ -53,13 +53,13 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-between p-4 relative overflow-hidden">
       <div className="cosmos-background absolute inset-0 z-0">
         <div className="orb orb-1 opacity-50"></div>
         <div className="orb orb-2 opacity-50"></div>
       </div>
 
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-md relative z-10 my-auto py-8">
         <div className="text-center mb-8">
           {/* GDG Branding */}
           <div className="flex flex-col items-center gap-3 mb-5">
@@ -164,7 +164,7 @@ const Register = () => {
       </div>
 
       {/* Footer */}
-      <footer className="absolute bottom-0 w-full z-10 border-t border-glass-border/40 py-6 text-center bg-black/5">
+      <footer className="w-full z-10 border-t border-glass-border/40 py-6 text-center bg-black/5 mt-8">
         <p className="text-sm text-secondary">
           Copyright 2026 Algorithm Arena. Built for{" "}
           <span className="text-primary font-semibold">

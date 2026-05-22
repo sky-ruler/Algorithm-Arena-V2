@@ -418,6 +418,8 @@ const ChallengeDetails = () => {
       setCodeByLang({});
       localStorage.removeItem(draftKey);
       queryClient.invalidateQueries({ queryKey: ["my-submissions", id] });
+      queryClient.invalidateQueries({ queryKey: ["dash-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["dash-profile"] });
     } catch (err) {
       toast.error(err.userMessage || "Submission failed.");
     } finally {
@@ -428,8 +430,8 @@ const ChallengeDetails = () => {
 
   // Sanitize the HTML description
   const sanitizedDescription = useMemo(() => {
-    if (!challengeQuery.data?.description) return "";
-    return DOMPurify.sanitize(challengeQuery.data.description, {
+    const raw = challengeQuery.data?.description || "";
+    return DOMPurify.sanitize(raw, {
       ADD_TAGS: ["img"],
       ADD_ATTR: ["target"],
     });
@@ -471,15 +473,13 @@ const ChallengeDetails = () => {
 
   return (
     <div
-      className="flex flex-col px-4 sm:px-6 lg:px-8"
+      className="flex flex-col w-full"
       style={{
-        height: "calc(100vh - 6rem)",
-        width: "100vw",
-        marginLeft: "calc(-50vw + 50%)",
+        height: "calc(100vh - 8rem)",
       }}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 pb-3 border-b border-black/10 dark:border-white/10 mb-3 shrink-0">
+      <div className="flex items-center gap-3 pb-3 border-b border-black/10 dark:border-white/10 mb-3 shrink-0 px-4 sm:px-6 lg:px-8 pt-4">
         <Link
           to="/dashboard"
           className="flex items-center gap-1 text-secondary hover:text-primary transition-colors text-sm"
@@ -519,7 +519,7 @@ const ChallengeDetails = () => {
       {/* Main Split Layout */}
       <div 
         ref={containerRef} 
-        className="flex flex-col lg:flex-row flex-1 min-h-0 w-full relative h-full"
+        className="flex flex-col lg:flex-row flex-1 min-h-0 w-full relative h-full px-4 sm:px-6 lg:px-8 pb-4"
         style={{ '--left-width': `${leftWidth}%`, '--right-width': `calc(${100 - leftWidth}% - 12px)` }}
       >
         {/* LEFT PANEL */}
@@ -561,7 +561,7 @@ const ChallengeDetails = () => {
               <div className="space-y-4">
                 <div 
                   className="leetcode-description text-sm leading-relaxed text-primary/90"
-                  dangerouslySetInnerHTML={{ __html: sanitizedDescription || challenge.description }}
+                  dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
                 />
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-black/10 dark:border-white/10">
                   <span

@@ -48,9 +48,23 @@ const createApp = () => {
   });
 
   app.use(requestContext);
-  app.use(helmet({
-    contentSecurityPolicy: false, // Disable CSP for easier deployment of React SPA
-  }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'", ...env.CORS_ORIGINS],
+          fontSrc: ["'self'", 'https:'],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          upgradeInsecureRequests: [],
+        },
+      },
+    })
+  );
   app.use(
     cors({
       origin(origin, callback) {
@@ -75,6 +89,17 @@ const createApp = () => {
     message: { success: false, message: 'Too many requests, please try again later.' },
   });
   app.use('/api', apiLimiter);
+
+  // Stricter limiter for auth endpoints to prevent brute-force attacks
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: process.env.NODE_ENV === 'development' ? 200 : 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many authentication attempts, please try again later.' },
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/challenges', challengeRoutes);

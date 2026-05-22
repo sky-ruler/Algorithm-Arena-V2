@@ -2,6 +2,7 @@ const Clan = require('./Clan.model');
 const User = require('../users/User.model');
 const Submission = require('../submissions/Submission.model');
 const { sendSuccess } = require('../../../utils/response');
+const { escapeHtml } = require('../../../utils/escapeHtml');
 
 // GET /api/clans/mine — returns the clan for the authenticated user (member or chief)
 const getMyClan = async (req, res, next) => {
@@ -308,11 +309,13 @@ const assignChief = async (req, res, next) => {
       newChief.role = 'clan-chief';
       await newChief.save();
       const { sendEmail } = require('../../../utils/emailService');
+      const safeName = escapeHtml(newChief.username);
+      const safeClan = escapeHtml(clan.name);
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eab308; border-radius: 8px;">
           <h2 style="color: #eab308;">Promotion to Clan Chief</h2>
-          <p>Dear ${newChief.username},</p>
-          <p>You have been assigned as the Chief of Clan <strong>${clan.name}</strong>.</p>
+          <p>Dear ${safeName},</p>
+          <p>You have been assigned as the Chief of Clan <strong>${safeClan}</strong>.</p>
           <p>Log in to access your Chief Dashboard and lead your clan to victory.</p>
         </div>
       `;
@@ -361,17 +364,19 @@ const addMember = async (req, res, next) => {
         const chiefUser = await User.findById(clan.chief);
         if (chiefUser) chiefName = chiefUser.username;
       }
-
+      const safeMember = escapeHtml(newMember.username);
+      const safeClan   = escapeHtml(clan.name);
+      const safeChief  = escapeHtml(chiefName);
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #10b981; border-radius: 8px;">
-          <h2 style="color: #10b981;">Welcome to ${clan.name}</h2>
-          <p>Dear ${newMember.username},</p>
-          <p>You have been successfully added to Clan <strong>${clan.name}</strong>.</p>
-          <p>Your Clan Chief is: ${chiefName}</p>
+          <h2 style="color: #10b981;">Welcome to ${safeClan}</h2>
+          <p>Dear ${safeMember},</p>
+          <p>You have been successfully added to Clan <strong>${safeClan}</strong>.</p>
+          <p>Your Clan Chief is: ${safeChief}</p>
           <p>Prepare for battle in the Algorithm Arena.</p>
         </div>
       `;
-      await sendEmail(newMember.email, `Algorithm Arena - Added to Clan ${clan.name}`, htmlContent);
+      await sendEmail(newMember.email, `Algorithm Arena - Added to Clan ${safeClan}`, htmlContent);
     }
 
     const populated = await Clan.findById(clan._id)
@@ -501,7 +506,7 @@ const addClanNotice = async (req, res, next) => {
 // DELETE /api/clans/:id/notices/:index — chief removes a notice
 const removeClanNotice = async (req, res, next) => {
   try {
-    const { index } = req.params;
+    const idx = Number(req.params.index);
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
@@ -510,7 +515,12 @@ const removeClanNotice = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Only the chief or an admin can remove notices' });
     }
 
-    clan.notices.splice(index, 1);
+    // Guard: reject non-numeric, negative, or out-of-bounds indices
+    if (!Number.isInteger(idx) || idx < 0 || idx >= clan.notices.length) {
+      return res.status(400).json({ success: false, message: 'Invalid notice index' });
+    }
+
+    clan.notices.splice(idx, 1);
     await clan.save();
 
     return sendSuccess(res, { data: clan.notices, message: 'Notice removed' });
