@@ -45,6 +45,9 @@ const ClanChat = () => {
     const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
+      auth: {
+        token: localStorage.getItem('token') || undefined,
+      },
     });
 
     socket.on('connect', () => {

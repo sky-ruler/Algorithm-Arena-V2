@@ -1,9 +1,12 @@
-const mongoose = require('mongoose');
 const Submission = require('./Submission.model');
 const Challenge = require('../challenges/Challenge.model');
 const { sendSuccess } = require('../../../utils/response');
 const { logAudit } = require('../../../utils/audit');
 const { escapeHtml } = require('../../../utils/escapeHtml');
+const {
+  canActorManageUser,
+  getActorMemberIdsInScope,
+} = require('../clans/clanScope.service');
 
 const VALID_STATUSES = ['Pending', 'Accepted', 'Rejected'];
 
@@ -69,10 +72,43 @@ const getSubmissions = async (req, res, next) => {
       sortDir = 'desc',
     } = req.query;
 
+    const scopeAccess = await getActorMemberIdsInScope(req.user);
+    if (!scopeAccess.allowed) {
+      return res.status(403).json({ success: false, message: scopeAccess.reason || 'Not authorized' });
+    }
+
     const filter = {};
     if (status) filter.status = status;
     if (challengeId) filter.challengeId = challengeId;
-    if (userId) filter.userId = userId;
+
+    if (scopeAccess.scope.kind === 'clan') {
+      const memberIds = scopeAccess.memberIds || [];
+      if (memberIds.length === 0) {
+        return sendSuccess(res, {
+          data: [],
+          meta: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 1,
+          },
+        });
+      }
+
+      if (userId) {
+        if (!memberIds.includes(userId)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Clan chiefs can only view submissions from members of their own clan',
+          });
+        }
+        filter.userId = userId;
+      } else {
+        filter.userId = { $in: memberIds };
+      }
+    } else if (userId) {
+      filter.userId = userId;
+    }
 
     if (from || to) {
       filter.submittedAt = {};
@@ -230,9 +266,15 @@ const getSubmissionById = async (req, res, next) => {
     }
 
     const isOwner = submission.userId && submission.userId._id.toString() === req.user.id.toString();
-    const isPrivileged = ['admin', 'clan-chief'].includes(req.user.role);
+    if (!isOwner) {
+      const scopeCheck = await canActorManageUser(req.user, submission.userId);
+      if (!scopeCheck.allowed) {
+        res.status(403);
+        throw new Error(scopeCheck.reason || 'Not authorized to view this submission');
+      }
+    }
 
-    if (!isOwner && !isPrivileged) {
+    if (!isOwner && !submission.userId) {
       res.status(403);
       throw new Error('Not authorized to view this submission');
     }
@@ -261,6 +303,20 @@ const updateSubmissionStatus = async (req, res, next) => {
       updateData.feedback = feedback;
     }
 
+    const existingSubmission = await Submission.findById(req.params.id)
+      .populate('userId', 'clan');
+
+    if (!existingSubmission) {
+      res.status(404);
+      throw new Error('Submission not found');
+    }
+
+    const scopeCheck = await canActorManageUser(req.user, existingSubmission.userId);
+    if (!scopeCheck.allowed) {
+      res.status(403);
+      throw new Error(scopeCheck.reason || 'Not authorized to review this submission');
+    }
+
     const submission = await Submission.findByIdAndUpdate(
       req.params.id,
       updateData,
@@ -269,11 +325,6 @@ const updateSubmissionStatus = async (req, res, next) => {
       .populate('userId', 'username email role points solvedProblems')
       .populate('challengeId', 'title difficulty points')
       .populate('reviewedBy', 'username role');
-
-    if (!submission) {
-      res.status(404);
-      throw new Error('Submission not found');
-    }
 
     await logAudit({
       action: 'submission.grade',

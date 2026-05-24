@@ -15,6 +15,9 @@ export const useSocket = (event, callback) => {
     const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
+      auth: {
+        token: localStorage.getItem('token') || undefined,
+      },
     });
     socketRef.current = socket;
 

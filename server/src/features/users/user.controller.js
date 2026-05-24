@@ -1,6 +1,7 @@
 const User = require('./User.model');
 const { sendSuccess } = require('../../../utils/response');
 const { escapeHtml } = require('../../../utils/escapeHtml');
+const { canActorManageUser } = require('../clans/clanScope.service');
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -67,6 +68,11 @@ const updateUserLevel = async (req, res, next) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    const scopeCheck = await canActorManageUser(req.user, user);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Not authorized' });
+    }
+
     user.codingLevel = level;
     await user.save();
 
@@ -84,6 +90,11 @@ const warnUser = async (req, res, next) => {
     const { message } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const scopeCheck = await canActorManageUser(req.user, user);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Not authorized' });
+    }
 
     user.status = 'Warned';
     await user.save();

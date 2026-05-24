@@ -34,6 +34,7 @@ try {
 
 const createApp = () => {
   const app = express();
+  const isNonProductionEnv = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 
   // Keep Render keepalive traffic as cheap as possible by bypassing the
   // standard middleware chain and returning immediately.
@@ -83,7 +84,7 @@ const createApp = () => {
 
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: process.env.NODE_ENV === 'development' ? 1000 : 200,
+    max: isNonProductionEnv ? 1000 : 200,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many requests, please try again later.' },
@@ -93,7 +94,7 @@ const createApp = () => {
   // Stricter limiter for auth endpoints to prevent brute-force attacks
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: process.env.NODE_ENV === 'development' ? 200 : 10,
+    max: isNonProductionEnv ? 200 : 10,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many authentication attempts, please try again later.' },

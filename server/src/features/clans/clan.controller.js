@@ -1,8 +1,76 @@
+const mongoose = require('mongoose');
 const Clan = require('./Clan.model');
 const User = require('../users/User.model');
 const Submission = require('../submissions/Submission.model');
 const { sendSuccess } = require('../../../utils/response');
 const { escapeHtml } = require('../../../utils/escapeHtml');
+const {
+  canActorManageClan,
+  reconcileChiefRoleForUser,
+  toIdString,
+} = require('./clanScope.service');
+
+const withSession = (query, session) => {
+  if (!session) return query;
+  return query.session(session);
+};
+
+const isTransactionUnsupported = (error) => {
+  const message = (error && error.message) || '';
+  return message.includes('Transaction numbers are only allowed on a replica set member or mongos');
+};
+
+const runWithOptionalTransaction = async (work) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    try {
+      await session.withTransaction(async () => {
+        result = await work(session);
+      });
+      return result;
+    } catch (error) {
+      if (!isTransactionUnsupported(error)) {
+        throw error;
+      }
+      return work(null);
+    }
+  } finally {
+    await session.endSession();
+  }
+};
+
+const removeUserFromOtherClans = async (userId, { keepClanId = null, session = null } = {}) => {
+  const criteria = { members: userId };
+  if (keepClanId) {
+    criteria._id = { $ne: keepClanId };
+  }
+
+  const clans = await withSession(
+    Clan.find(criteria).select('_id chief members'),
+    session
+  );
+
+  for (const sourceClan of clans) {
+    sourceClan.members.pull(userId);
+    if (sourceClan.chief && sourceClan.chief.toString() === toIdString(userId)) {
+      sourceClan.chief = null;
+    }
+    await sourceClan.save({ session });
+  }
+
+  const requestCriteria = { requests: userId };
+  if (keepClanId) {
+    requestCriteria._id = { $ne: keepClanId };
+  }
+
+  await withSession(
+    Clan.updateMany(requestCriteria, { $pull: { requests: userId } }),
+    session
+  );
+
+  await reconcileChiefRoleForUser(userId, { session });
+};
 
 // GET /api/clans/mine — returns the clan for the authenticated user (member or chief)
 const getMyClan = async (req, res, next) => {
@@ -215,18 +283,31 @@ const updateClan = async (req, res, next) => {
 // DELETE /api/clans/:id — admin deletes a clan
 const deleteClan = async (req, res, next) => {
   try {
-    const clan = await Clan.findById(req.params.id);
-    if (!clan) {
-      return res.status(404).json({ success: false, message: 'Clan not found' });
-    }
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
+      if (!clan) {
+        return res.status(404).json({ success: false, message: 'Clan not found' });
+      }
 
-    // Remove clan reference from all members
-    await User.updateMany(
-      { _id: { $in: clan.members } },
-      { $unset: { clan: '' } }
-    );
+      await withSession(
+        User.updateMany(
+          { _id: { $in: clan.members } },
+          { $unset: { clan: '' } }
+        ),
+        session
+      );
 
-    await Clan.findByIdAndDelete(req.params.id);
+      const oldChiefId = clan.chief ? clan.chief.toString() : null;
+      await withSession(Clan.deleteOne({ _id: clan._id }), session);
+
+      if (oldChiefId) {
+        await reconcileChiefRoleForUser(oldChiefId, { session });
+      }
+      return null;
+    });
+
+    if (res.headersSent) return null;
+
     return sendSuccess(res, { message: 'Clan deleted' });
   } catch (err) {
     return next(err);
@@ -236,16 +317,27 @@ const deleteClan = async (req, res, next) => {
 // POST /api/clans/:id/join — user joins a clan
 const joinClan = async (req, res, next) => {
   try {
+    const requester = await User.findById(req.user._id).select('clan');
+    if (!requester) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (requester.clan) {
+      return res.status(400).json({
+        success: false,
+        message: 'You are already assigned to a clan. Leave your current clan before requesting a new one.',
+      });
+    }
+
     const clan = await Clan.findById(req.params.id);
     if (!clan) {
       return res.status(404).json({ success: false, message: 'Clan not found' });
     }
 
-    if (clan.members.includes(req.user._id)) {
+    if (clan.members.map((id) => id.toString()).includes(req.user._id.toString())) {
       return res.status(400).json({ success: false, message: 'Already a member of this clan' });
     }
 
-    if (clan.requests.includes(req.user._id)) {
+    if (clan.requests.map((id) => id.toString()).includes(req.user._id.toString())) {
       return res.status(400).json({ success: false, message: 'Already requested to join this clan' });
     }
 
@@ -262,26 +354,40 @@ const joinClan = async (req, res, next) => {
 // POST /api/clans/:id/leave — user leaves a clan
 const leaveClan = async (req, res, next) => {
   try {
-    const clan = await Clan.findById(req.params.id);
-    if (!clan) {
-      return res.status(404).json({ success: false, message: 'Clan not found' });
-    }
+    let clanName = 'the clan';
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
+      if (!clan) {
+        return res.status(404).json({ success: false, message: 'Clan not found' });
+      }
+      clanName = clan.name;
 
-    if (!clan.members.includes(req.user._id)) {
-      return res.status(400).json({ success: false, message: 'Not a member of this clan' });
-    }
+      if (!clan.members.map((id) => id.toString()).includes(req.user._id.toString())) {
+        return res.status(400).json({ success: false, message: 'Not a member of this clan' });
+      }
 
-    clan.members.pull(req.user._id);
+      clan.members.pull(req.user._id);
 
-    // If user was chief, unset chief
-    if (clan.chief && clan.chief.toString() === req.user._id.toString()) {
-      clan.chief = null;
-    }
+      const wasChief = clan.chief && clan.chief.toString() === req.user._id.toString();
+      if (wasChief) {
+        clan.chief = null;
+      }
 
-    await clan.save();
-    await User.findByIdAndUpdate(req.user._id, { $unset: { clan: '' } });
+      await clan.save({ session });
+      await withSession(
+        User.findByIdAndUpdate(req.user._id, { $unset: { clan: '' } }),
+        session
+      );
 
-    return sendSuccess(res, { message: `Left clan ${clan.name}` });
+      if (wasChief) {
+        await reconcileChiefRoleForUser(req.user._id, { session });
+      }
+      return null;
+    });
+
+    if (res.headersSent) return null;
+
+    return sendSuccess(res, { message: `Left clan ${clanName}` });
   } catch (err) {
     return next(err);
   }
@@ -291,26 +397,54 @@ const leaveClan = async (req, res, next) => {
 const assignChief = async (req, res, next) => {
   try {
     const { userId } = req.body;
-    const clan = await Clan.findById(req.params.id);
+    let promotedChief = null;
+    let clanName = '';
+    let clanId = '';
 
-    if (!clan) {
-      return res.status(404).json({ success: false, message: 'Clan not found' });
-    }
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
 
-    if (!clan.members.map(m => m.toString()).includes(userId)) {
-      return res.status(400).json({ success: false, message: 'User must be a clan member to become chief' });
-    }
+      if (!clan) {
+        return res.status(404).json({ success: false, message: 'Clan not found' });
+      }
 
-    clan.chief = userId;
-    await clan.save();
+      clanName = clan.name;
+      clanId = clan._id.toString();
 
-    const newChief = await User.findById(userId);
-    if (newChief) {
+      if (!clan.members.map((m) => m.toString()).includes(userId)) {
+        return res.status(400).json({ success: false, message: 'User must be a clan member to become chief' });
+      }
+
+      const newChief = await withSession(User.findById(userId), session);
+      if (!newChief) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      const previousChiefId = clan.chief ? clan.chief.toString() : null;
+      clan.chief = userId;
+      await clan.save({ session });
+
       newChief.role = 'clan-chief';
-      await newChief.save();
+      newChief.clan = clan._id;
+      await newChief.save({ session });
+
+      if (previousChiefId && previousChiefId !== userId) {
+        await reconcileChiefRoleForUser(previousChiefId, { session });
+      }
+
+      promotedChief = {
+        email: newChief.email,
+        username: newChief.username,
+      };
+      return null;
+    });
+
+    if (res.headersSent) return null;
+
+    if (promotedChief) {
       const { sendEmail } = require('../../../utils/emailService');
-      const safeName = escapeHtml(newChief.username);
-      const safeClan = escapeHtml(clan.name);
+      const safeName = escapeHtml(promotedChief.username);
+      const safeClan = escapeHtml(clanName);
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eab308; border-radius: 8px;">
           <h2 style="color: #eab308;">Promotion to Clan Chief</h2>
@@ -319,10 +453,10 @@ const assignChief = async (req, res, next) => {
           <p>Log in to access your Chief Dashboard and lead your clan to victory.</p>
         </div>
       `;
-      await sendEmail(newChief.email, 'Algorithm Arena - Promoted to Clan Chief', htmlContent);
+      await sendEmail(promotedChief.email, 'Algorithm Arena - Promoted to Clan Chief', htmlContent);
     }
 
-    const populated = await Clan.findById(clan._id)
+    const populated = await Clan.findById(clanId)
       .populate('chief', 'username email')
       .populate('members', 'username email');
 
@@ -336,37 +470,61 @@ const assignChief = async (req, res, next) => {
 const addMember = async (req, res, next) => {
   try {
     const { userId } = req.body;
-    const clan = await Clan.findById(req.params.id);
+    let clanId = '';
+    let clanName = '';
+    let chiefName = 'Admin';
+    let newMember = null;
 
-    if (!clan) {
-      return res.status(404).json({ success: false, message: 'Clan not found' });
-    }
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
 
-    if (clan.members.map(m => m.toString()).includes(userId)) {
-      return res.status(400).json({ success: false, message: 'User is already a member' });
-    }
+      if (!clan) {
+        return res.status(404).json({ success: false, message: 'Clan not found' });
+      }
 
-    // Remove from other clans
-    await Clan.updateMany(
-      { members: userId },
-      { $pull: { members: userId } }
-    );
+      clanId = clan._id.toString();
+      clanName = clan.name;
 
-    clan.members.push(userId);
-    await clan.save();
-    
-    const newMember = await User.findByIdAndUpdate(userId, { clan: clan._id }, { new: true });
-    
-    if (newMember) {
-      const { sendEmail } = require('../../../utils/emailService');
-      let chiefName = 'Admin';
+      if (clan.members.map((m) => m.toString()).includes(userId)) {
+        return res.status(400).json({ success: false, message: 'User is already a member' });
+      }
+
+      const memberUser = await withSession(User.findById(userId), session);
+      if (!memberUser) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      await removeUserFromOtherClans(userId, { keepClanId: clan._id, session });
+
+      clan.members.addToSet(userId);
+      clan.requests.pull(userId);
+      await clan.save({ session });
+
+      memberUser.clan = clan._id;
+      if (clan.chief && clan.chief.toString() === userId) {
+        memberUser.role = 'clan-chief';
+      }
+      await memberUser.save({ session });
+
       if (clan.chief) {
-        const chiefUser = await User.findById(clan.chief);
+        const chiefUser = await withSession(User.findById(clan.chief).select('username'), session);
         if (chiefUser) chiefName = chiefUser.username;
       }
+
+      newMember = {
+        email: memberUser.email,
+        username: memberUser.username,
+      };
+      return null;
+    });
+
+    if (res.headersSent) return null;
+
+    if (newMember) {
+      const { sendEmail } = require('../../../utils/emailService');
       const safeMember = escapeHtml(newMember.username);
-      const safeClan   = escapeHtml(clan.name);
-      const safeChief  = escapeHtml(chiefName);
+      const safeClan = escapeHtml(clanName);
+      const safeChief = escapeHtml(chiefName);
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #10b981; border-radius: 8px;">
           <h2 style="color: #10b981;">Welcome to ${safeClan}</h2>
@@ -379,7 +537,7 @@ const addMember = async (req, res, next) => {
       await sendEmail(newMember.email, `Algorithm Arena - Added to Clan ${safeClan}`, htmlContent);
     }
 
-    const populated = await Clan.findById(clan._id)
+    const populated = await Clan.findById(clanId)
       .populate('chief', 'username email')
       .populate('members', 'username email');
 
@@ -393,26 +551,49 @@ const addMember = async (req, res, next) => {
 const removeMember = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const clan = await Clan.findById(req.params.id);
+    let clanId = '';
 
-    if (!clan) {
-      return res.status(404).json({ success: false, message: 'Clan not found' });
-    }
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
 
-    // Auth check: only chief or admin
-    const isAdmin = req.user.role === 'admin';
-    if (clan.chief?.toString() !== req.user._id.toString() && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
+      if (!clan) {
+        return res.status(404).json({ success: false, message: 'Clan not found' });
+      }
 
-    clan.members.pull(userId);
-    if (clan.chief && clan.chief.toString() === userId) {
-      clan.chief = null;
-    }
-    await clan.save();
-    await User.findByIdAndUpdate(userId, { $unset: { clan: '' } });
+      const scopeCheck = await canActorManageClan(req.user, clan, { session });
+      if (!scopeCheck.allowed) {
+        return res.status(403).json({ success: false, message: scopeCheck.reason || 'Not authorized' });
+      }
 
-    const populated = await Clan.findById(clan._id)
+      clanId = clan._id.toString();
+      if (!clan.members.map((m) => m.toString()).includes(userId)) {
+        return res.status(400).json({ success: false, message: 'User is not a member of this clan' });
+      }
+
+      clan.members.pull(userId);
+      clan.requests.pull(userId);
+      const wasChief = clan.chief && clan.chief.toString() === userId;
+      if (wasChief) {
+        clan.chief = null;
+      }
+
+      await clan.save({ session });
+
+      const user = await withSession(User.findById(userId), session);
+      if (user && user.clan && user.clan.toString() === clan._id.toString()) {
+        user.clan = null;
+        await user.save({ session });
+      }
+
+      if (wasChief) {
+        await reconcileChiefRoleForUser(userId, { session });
+      }
+      return null;
+    });
+
+    if (res.headersSent) return null;
+
+    const populated = await Clan.findById(clanId)
       .populate('chief', 'username email')
       .populate('members', 'username email');
 
@@ -425,36 +606,37 @@ const removeMember = async (req, res, next) => {
 // POST /api/clans/:id/approve/:userId — chief approves request
 const approveJoinRequest = async (req, res, next) => {
   try {
-    const clan = await Clan.findById(req.params.id);
-    if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
-
-    // Auth check: only chief or admin
-    const isAdmin = req.user.role === 'admin';
-    if (clan.chief?.toString() !== req.user._id.toString() && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Only the chief or an admin can approve requests' });
-    }
-
     const { userId } = req.params;
-    if (!clan.requests.includes(userId)) {
-      return res.status(400).json({ success: false, message: 'No such request found' });
-    }
+    await runWithOptionalTransaction(async (session) => {
+      const clan = await withSession(Clan.findById(req.params.id), session);
+      if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
-    // Remove from other clans first
-    await Clan.updateMany(
-      { members: userId },
-      { $pull: { members: userId } }
-    );
-    // Remove from other requests too? Maybe not necessary but cleaner
-    await Clan.updateMany(
-      { requests: userId },
-      { $pull: { requests: userId } }
-    );
+      const scopeCheck = await canActorManageClan(req.user, clan, { session });
+      if (!scopeCheck.allowed) {
+        return res.status(403).json({ success: false, message: scopeCheck.reason || 'Only the chief or an admin can approve requests' });
+      }
 
-    clan.requests.pull(userId);
-    clan.members.push(userId);
-    await clan.save();
+      if (!clan.requests.map((id) => id.toString()).includes(userId)) {
+        return res.status(400).json({ success: false, message: 'No such request found' });
+      }
 
-    await User.findByIdAndUpdate(userId, { clan: clan._id });
+      const user = await withSession(User.findById(userId), session);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      await removeUserFromOtherClans(userId, { keepClanId: clan._id, session });
+
+      clan.requests.pull(userId);
+      clan.members.addToSet(userId);
+      await clan.save({ session });
+
+      user.clan = clan._id;
+      await user.save({ session });
+      return null;
+    });
+
+    if (res.headersSent) return null;
 
     return sendSuccess(res, { message: 'Request approved' });
   } catch (err) {
@@ -468,9 +650,9 @@ const rejectJoinRequest = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
-    const isAdmin = req.user.role === 'admin';
-    if (clan.chief?.toString() !== req.user._id.toString() && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Only the chief or an admin can reject requests' });
+    const scopeCheck = await canActorManageClan(req.user, clan);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Only the chief or an admin can reject requests' });
     }
 
     clan.requests.pull(req.params.userId);
@@ -489,9 +671,9 @@ const addClanNotice = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
-    const isAdmin = req.user.role === 'admin';
-    if (clan.chief?.toString() !== req.user._id.toString() && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Only the chief or an admin can post notices' });
+    const scopeCheck = await canActorManageClan(req.user, clan);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Only the chief or an admin can post notices' });
     }
 
     clan.notices.push(notice);
@@ -510,9 +692,9 @@ const removeClanNotice = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
-    const isAdmin = req.user.role === 'admin';
-    if (clan.chief?.toString() !== req.user._id.toString() && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Only the chief or an admin can remove notices' });
+    const scopeCheck = await canActorManageClan(req.user, clan);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Only the chief or an admin can remove notices' });
     }
 
     // Guard: reject non-numeric, negative, or out-of-bounds indices

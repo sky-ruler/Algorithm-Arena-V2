@@ -42,10 +42,11 @@ exports.admin = (req, res, next) => {
 exports.chiefOrAdmin = (req, res, next) => {
   if (req.user && (
     req.user.role === 'admin' || 
+    req.user.role === 'moderator' ||
     req.user.role === 'clan-chief'
   )) {
     return next();
   }
 
-  return res.status(403).json({ success: false, message: 'Not authorized as an admin or clan chief' });
+  return res.status(403).json({ success: false, message: 'Not authorized as an admin, moderator, or clan chief' });
 };

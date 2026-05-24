@@ -97,6 +97,20 @@ const ClanManagerTab = () => {
     }
   });
 
+  const assignChiefMutation = useMutation({
+    mutationFn: async ({ clanId, userId }) => {
+      return api.put(`/api/clans/${clanId}/chief`, { userId });
+    },
+    onSuccess: () => {
+      toast.success("Clan chief updated");
+      queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
+      queryClient.invalidateQueries(['admin-clans']);
+    },
+    onError: () => {
+      toast.error("Failed to update clan chief");
+    }
+  });
+
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }) => {
       return api.put(`/api/users/${userId}/role`, { role });
@@ -208,7 +222,7 @@ const ClanManagerTab = () => {
                             <button 
                               onClick={() => {
                                 if (window.confirm(`Make ${member.username} the Clan Chief?`)) {
-                                  updateRoleMutation.mutate({ userId: member._id, role: 'clan-chief' });
+                                  assignChiefMutation.mutate({ clanId: clan._id, userId: member._id });
                                 }
                               }}
                               className="p-2 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"

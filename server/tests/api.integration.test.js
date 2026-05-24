@@ -7,6 +7,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 let mongoServer;
 let app;
 let User;
+let Clan;
 let Submission;
 let RefreshToken;
 
@@ -25,6 +26,7 @@ test.before(async () => {
 
   ({ app } = require('../server'));
   User = require('../src/features/users/User.model.js');
+  Clan = require('../src/features/clans/Clan.model.js');
   Submission = require('../src/features/submissions/Submission.model.js');
   RefreshToken = require('../src/features/auth/RefreshToken.model.js');
 
@@ -41,6 +43,19 @@ test.after(async () => {
 test.beforeEach(async () => {
   await clearDatabase();
 });
+
+const registerUser = async ({ username, email, password = 'strong-password' }) => {
+  const res = await request(app).post('/api/auth/register').send({
+    username,
+    email,
+    password,
+  });
+  assert.equal(res.status, 201);
+  return {
+    id: res.body.data._id,
+    token: res.body.data.token,
+  };
+};
 
 test('/ping returns a lightweight health response', async () => {
   const pingRes = await request(app).get('/ping');
@@ -213,4 +228,248 @@ test('challenge + submission flow enforces owner permissions', async () => {
 
   const storedSubmission = await Submission.findById(submissionId);
   assert.equal(storedSubmission.status, 'Pending');
+});
+
+test('clan chief submission review is clan-scoped, moderator has global override', async () => {
+  const admin = await registerUser({
+    username: 'admin_scope',
+    email: 'admin.scope@example.com',
+  });
+  await User.findByIdAndUpdate(admin.id, { role: 'admin' });
+
+  const adminLogin = await request(app).post('/api/auth/login').send({
+    email: 'admin.scope@example.com',
+    password: 'strong-password',
+  });
+  const adminToken = adminLogin.body.data.token;
+
+  const challengeRes = await request(app)
+    .post('/api/challenges')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      title: 'Scope Challenge',
+      description: 'Validate clan-scoped submission review permissions.',
+      difficulty: 'Easy',
+      points: 50,
+      category: 'Auth',
+    });
+  assert.equal(challengeRes.status, 201);
+  const challengeId = challengeRes.body.data._id;
+
+  const clanARes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Alpha', tag: 'ALP', description: 'Alpha' });
+  const clanBRes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Beta', tag: 'BET', description: 'Beta' });
+  assert.equal(clanARes.status, 201);
+  assert.equal(clanBRes.status, 201);
+
+  const chiefA = await registerUser({
+    username: 'chief_alpha',
+    email: 'chief.alpha@example.com',
+  });
+  const memberA = await registerUser({
+    username: 'member_alpha',
+    email: 'member.alpha@example.com',
+  });
+  const memberB = await registerUser({
+    username: 'member_beta',
+    email: 'member.beta@example.com',
+  });
+  const moderator = await registerUser({
+    username: 'mod_global',
+    email: 'mod.global@example.com',
+  });
+  await User.findByIdAndUpdate(moderator.id, { role: 'moderator' });
+
+  const clanAId = clanARes.body.data._id;
+  const clanBId = clanBRes.body.data._id;
+
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanAId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: chiefA.id })).status,
+    200
+  );
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanAId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: memberA.id })).status,
+    200
+  );
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanBId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: memberB.id })).status,
+    200
+  );
+
+  const assignChiefRes = await request(app)
+    .put(`/api/clans/${clanAId}/chief`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: chiefA.id });
+  assert.equal(assignChiefRes.status, 200);
+
+  const memberBSubmissionRes = await request(app)
+    .post('/api/submissions')
+    .set('Authorization', `Bearer ${memberB.token}`)
+    .send({
+      challengeId,
+      code: 'function solve(){ return 42; }',
+      language: 'javascript',
+    });
+  assert.equal(memberBSubmissionRes.status, 201);
+
+  const memberASubmissionRes = await request(app)
+    .post('/api/submissions')
+    .set('Authorization', `Bearer ${memberA.token}`)
+    .send({
+      challengeId,
+      code: 'function solve(){ return 7; }',
+      language: 'javascript',
+    });
+  assert.equal(memberASubmissionRes.status, 201);
+
+  const chiefBlockedList = await request(app)
+    .get(`/api/submissions?userId=${memberB.id}`)
+    .set('Authorization', `Bearer ${chiefA.token}`);
+  assert.equal(chiefBlockedList.status, 403);
+
+  const chiefBlockedReview = await request(app)
+    .put(`/api/submissions/${memberBSubmissionRes.body.data._id}`)
+    .set('Authorization', `Bearer ${chiefA.token}`)
+    .send({ status: 'Accepted', feedback: 'Looks good' });
+  assert.equal(chiefBlockedReview.status, 403);
+
+  const chiefOwnClanReview = await request(app)
+    .put(`/api/submissions/${memberASubmissionRes.body.data._id}`)
+    .set('Authorization', `Bearer ${chiefA.token}`)
+    .send({ status: 'Accepted', feedback: 'Approved for your clan' });
+  assert.equal(chiefOwnClanReview.status, 200);
+
+  const moderatorGlobalReview = await request(app)
+    .put(`/api/submissions/${memberBSubmissionRes.body.data._id}`)
+    .set('Authorization', `Bearer ${moderator.token}`)
+    .send({ status: 'Accepted', feedback: 'Moderator global review' });
+  assert.equal(moderatorGlobalReview.status, 200);
+});
+
+test('clan chief user moderation is clan-scoped and join requests are blocked for assigned users', async () => {
+  const admin = await registerUser({
+    username: 'admin_userscope',
+    email: 'admin.userscope@example.com',
+  });
+  await User.findByIdAndUpdate(admin.id, { role: 'admin' });
+
+  const adminLogin = await request(app).post('/api/auth/login').send({
+    email: 'admin.userscope@example.com',
+    password: 'strong-password',
+  });
+  const adminToken = adminLogin.body.data.token;
+
+  const clanARes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Gamma', tag: 'GAM', description: 'Gamma' });
+  const clanBRes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Delta', tag: 'DEL', description: 'Delta' });
+  assert.equal(clanARes.status, 201);
+  assert.equal(clanBRes.status, 201);
+
+  const chiefA = await registerUser({
+    username: 'chief_gamma',
+    email: 'chief.gamma@example.com',
+  });
+  const memberA = await registerUser({
+    username: 'member_gamma',
+    email: 'member.gamma@example.com',
+  });
+  const memberB = await registerUser({
+    username: 'member_delta',
+    email: 'member.delta@example.com',
+  });
+
+  const clanAId = clanARes.body.data._id;
+  const clanBId = clanBRes.body.data._id;
+
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanAId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: chiefA.id })).status,
+    200
+  );
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanAId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: memberA.id })).status,
+    200
+  );
+  assert.equal(
+    (await request(app)
+      .post(`/api/clans/${clanBId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: memberB.id })).status,
+    200
+  );
+
+  const assignChiefRes = await request(app)
+    .put(`/api/clans/${clanAId}/chief`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: chiefA.id });
+  assert.equal(assignChiefRes.status, 200);
+
+  const chiefBlockedWarn = await request(app)
+    .post(`/api/users/${memberB.id}/warn`)
+    .set('Authorization', `Bearer ${chiefA.token}`)
+    .send({ message: 'Cross-clan warning attempt' });
+  assert.equal(chiefBlockedWarn.status, 403);
+
+  const chiefAllowedWarn = await request(app)
+    .post(`/api/users/${memberA.id}/warn`)
+    .set('Authorization', `Bearer ${chiefA.token}`)
+    .send({ message: 'In-clan warning' });
+  assert.equal(chiefAllowedWarn.status, 200);
+
+  const assignedUserJoinElsewhere = await request(app)
+    .post(`/api/clans/${clanBId}/join`)
+    .set('Authorization', `Bearer ${memberA.token}`)
+    .send({});
+  assert.equal(assignedUserJoinElsewhere.status, 400);
+  assert.match(assignedUserJoinElsewhere.body.message, /already assigned to a clan/i);
+});
+
+test('role-only clan-chief without clan mapping cannot access clan-chief scoped actions', async () => {
+  const ghostChief = await registerUser({
+    username: 'ghost_chief',
+    email: 'ghost.chief@example.com',
+  });
+  const targetUser = await registerUser({
+    username: 'ghost_target',
+    email: 'ghost.target@example.com',
+  });
+
+  await User.findByIdAndUpdate(ghostChief.id, { role: 'clan-chief' });
+  const noClanMapping = await Clan.findOne({ chief: ghostChief.id });
+  assert.equal(noClanMapping, null);
+
+  const submissionsAttempt = await request(app)
+    .get('/api/submissions')
+    .set('Authorization', `Bearer ${ghostChief.token}`);
+  assert.equal(submissionsAttempt.status, 403);
+
+  const warnAttempt = await request(app)
+    .post(`/api/users/${targetUser.id}/warn`)
+    .set('Authorization', `Bearer ${ghostChief.token}`)
+    .send({ message: 'No clan mapping should fail' });
+  assert.equal(warnAttempt.status, 403);
 });
