@@ -276,6 +276,9 @@ const updateClan = async (req, res, next) => {
 
     return sendSuccess(res, { data: clan, message: 'Clan updated' });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, message: 'Clan name or tag already exists in an active clan' });
+    }
     return next(err);
   }
 };

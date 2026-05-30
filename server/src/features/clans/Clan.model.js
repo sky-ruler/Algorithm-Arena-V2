@@ -4,7 +4,6 @@ const clanSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Clan name is required'],
-    unique: true,
     trim: true,
     minlength: [2, 'Clan name must be at least 2 characters'],
     maxlength: [32, 'Clan name cannot exceed 32 characters'],
@@ -12,7 +11,6 @@ const clanSchema = new mongoose.Schema({
   tag: {
     type: String,
     required: [true, 'Clan tag is required'],
-    unique: true,
     trim: true,
     uppercase: true,
     minlength: [2, 'Tag must be at least 2 characters'],
@@ -53,5 +51,8 @@ const clanSchema = new mongoose.Schema({
 clanSchema.virtual('memberCount').get(function () {
   return this.members ? this.members.length : 0;
 });
+
+clanSchema.index({ name: 1 }, { unique: true, partialFilterExpression: { status: 'active' } });
+clanSchema.index({ tag: 1 }, { unique: true, partialFilterExpression: { status: 'active' } });
 
 module.exports = mongoose.model('Clan', clanSchema);
