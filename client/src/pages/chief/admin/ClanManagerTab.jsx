@@ -15,7 +15,6 @@ import {
   canManageClanGlobally,
   canManageClanMembers,
   canRestoreClan,
-  canUpdateClan,
   isClanArchived,
 } from '../../lib/permissions';
 
@@ -191,7 +190,6 @@ const ClanManagerTab = () => {
     const canArchiveCurrentClan = canArchiveClan(user, clan);
     const canRestoreCurrentClan = canRestoreClan(user, clan);
     const canDeleteCurrentClan = canDeleteClan(user, clan);
-    const canEditCurrentClan = canUpdateClan(user, clan);
     const canManageMembers = canManageClanMembers(user, clan);
     return (
       <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">

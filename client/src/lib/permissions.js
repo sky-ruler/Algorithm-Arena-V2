@@ -1,8 +1,6 @@
 const GLOBAL_OVERRIDE_ROLES = new Set(['admin', 'moderator']);
 const CHIEF_ROLES = new Set(['clan-chief', 'admin']);
 
-const getUserId = (user) => user?._id || user?.id || null;
-
 const isGlobalOverride = (user) => GLOBAL_OVERRIDE_ROLES.has(user?.role);
 
 const isChief = (user) => CHIEF_ROLES.has(user?.role) || Boolean(user?.isChief);
@@ -56,7 +54,7 @@ const canIssueWarning = (user, targetUser, clan) => {
   return Boolean(targetClanId && targetClanId === getClanId(clan));
 };
 
-module.exports = {
+export {
   canAccessChiefPanel,
   canArchiveClan,
   canApproveJoinRequests,
