@@ -58,11 +58,13 @@ router.post('/__repair-indexes__', protect, admin, async (req, res) => {
     const db = require('mongoose').connection.db;
     const clanCollection = db.collection('clans');
 
-    const currentIndexes = await clanCollection.getIndexes();
+    const indexCursor = clanCollection.listIndexes();
+    const currentIndexes = await indexCursor.toArray();
     const results = { dropped: [], created: [], error: null };
 
     // Force drop all non-_id indexes
-    for (const [indexName, spec] of Object.entries(currentIndexes)) {
+    for (const indexSpec of currentIndexes) {
+      const indexName = indexSpec.name;
       if (indexName === '_id_') continue;
       try {
         await clanCollection.dropIndex(indexName);

@@ -40,14 +40,16 @@ const repairClanIndexes = async () => {
     const db = mongoose.connection.db;
     const clanCollection = db.collection('clans');
 
-    const currentIndexes = await clanCollection.getIndexes();
-    logger.info(`Found ${Object.keys(currentIndexes).length} indexes`, { indexes: Object.keys(currentIndexes) });
+    const indexCursor = clanCollection.listIndexes();
+    const indexArray = await indexCursor.toArray();
+    logger.info(`Found ${indexArray.length} indexes`, { indexes: indexArray.map(i => i.name) });
 
     // Check if old/broken indexes exist
     let hasOldIndexes = false;
     const indexesToDrop = [];
 
-    for (const [name, spec] of Object.entries(currentIndexes)) {
+    for (const spec of indexArray) {
+      const name = spec.name;
       if (name === '_id_') continue;
 
       const isNameOrTagIndex = spec.key?.name === 1 || spec.key?.tag === 1;
