@@ -321,7 +321,16 @@ const createClan = async (req, res, next) => {
         success: false,
         message: `Clan with this ${field} already exists`,
         field: field,
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        duplicateValue: err.keyValue?.[field],
+        debug: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: messages
       });
     }
     return next(err);

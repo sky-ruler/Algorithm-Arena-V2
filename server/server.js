@@ -28,7 +28,7 @@ const connectDB = async () => {
   return conn;
 };
 
-// Auto-repair clan collection indexes on startup (one-time fix for production)
+// Auto-repair clan collection indexes on startup (aggressive approach)
 const repairClanIndexes = async () => {
   if (process.env.NODE_ENV !== 'production') {
     logger.info('Skipping clan index repair (not production)');
@@ -41,78 +41,92 @@ const repairClanIndexes = async () => {
     const clanCollection = db.collection('clans');
 
     const currentIndexes = await clanCollection.getIndexes();
-    logger.info(`Found ${Object.keys(currentIndexes).length} indexes:`, { indexes: Object.keys(currentIndexes) });
+    logger.info(`Found ${Object.keys(currentIndexes).length} indexes`, { indexes: Object.keys(currentIndexes) });
 
-    // Check if old non-partial indexes exist
-    let needsRepair = false;
+    // Check if old/broken indexes exist
+    let hasOldIndexes = false;
     const indexesToDrop = [];
 
     for (const [name, spec] of Object.entries(currentIndexes)) {
       if (name === '_id_') continue;
 
       const isNameOrTagIndex = spec.key?.name === 1 || spec.key?.tag === 1;
-      const isPartial = !!spec.partialFilterExpression;
+      const hasPartialFilter = !!spec.partialFilterExpression;
 
       logger.info(`Index "${name}":`, {
         key: spec.key,
-        isPartial,
-        partialFilter: spec.partialFilterExpression
+        unique: spec.unique,
+        isPartial: hasPartialFilter
       });
 
-      if (isNameOrTagIndex && !isPartial) {
-        logger.warn(`⚠️  Found old non-partial index: ${name} - needs repair`);
-        needsRepair = true;
+      // Drop if:
+      // 1. It's a name/tag index but NOT partial (old index)
+      // 2. It's any name/tag index that's not the correct one we want
+      if (isNameOrTagIndex && !hasPartialFilter) {
+        logger.warn(`⚠️  OLD NON-PARTIAL INDEX FOUND: ${name}`);
+        hasOldIndexes = true;
         indexesToDrop.push(name);
       }
     }
 
-    if (!needsRepair) {
-      logger.info('✅ Clan indexes are correct (all are partial)');
+    if (!hasOldIndexes) {
+      logger.info('✅ Clan indexes are correct');
       return;
     }
 
-    logger.info(`🔧 Repairing ${indexesToDrop.length} indexes...`);
+    logger.info(`🔨 AGGRESSIVE: Dropping ${indexesToDrop.length} old indexes...`);
 
-    // Drop old indexes
+    // FORCE drop all bad indexes
     for (const indexName of indexesToDrop) {
       try {
         await clanCollection.dropIndex(indexName);
-        logger.info(`✅ Dropped index: ${indexName}`);
+        logger.info(`✅ Dropped: ${indexName}`);
       } catch (err) {
         logger.warn(`⚠️  Could not drop ${indexName}: ${err.message}`);
       }
     }
 
-    // Create correct partial unique indexes
-    logger.info('Creating new partial unique indexes...');
+    // Wait for drop to propagate
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Create ONLY the correct partial indexes
+    logger.info('✨ Creating partial unique indexes...');
 
     try {
-      await clanCollection.createIndex(
+      const nameResult = await clanCollection.createIndex(
         { name: 1 },
-        { unique: true, partialFilterExpression: { status: 'active' } }
+        {
+          unique: true,
+          partialFilterExpression: { status: 'active' },
+          background: true,
+          name: 'name_unique_active_only'
+        }
       );
-      logger.info('✅ Created partial unique index on name');
+      logger.info('✅ Created name index (partial)', { result: nameResult });
     } catch (err) {
       logger.error('Failed to create name index', { error: err.message });
     }
 
     try {
-      await clanCollection.createIndex(
+      const tagResult = await clanCollection.createIndex(
         { tag: 1 },
-        { unique: true, partialFilterExpression: { status: 'active' } }
+        {
+          unique: true,
+          partialFilterExpression: { status: 'active' },
+          background: true,
+          name: 'tag_unique_active_only'
+        }
       );
-      logger.info('✅ Created partial unique index on tag');
+      logger.info('✅ Created tag index (partial)', { result: tagResult });
     } catch (err) {
       logger.error('Failed to create tag index', { error: err.message });
     }
 
-    logger.info('✨ Clan indexes repaired successfully!');
+    logger.info('✨ Clan indexes repaired! Can now create unlimited active clans.');
   } catch (err) {
     logger.error('Failed to repair clan indexes', {
       error: err.message || JSON.stringify(err),
-      stack: err.stack,
-      code: err.code,
-      name: err.name
+      stack: err.stack
     });
   }
 };
