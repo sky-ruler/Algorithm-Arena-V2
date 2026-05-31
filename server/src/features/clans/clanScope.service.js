@@ -1,7 +1,6 @@
 const Clan = require('./Clan.model');
 const User = require('../users/User.model');
-
-const GLOBAL_OVERRIDE_ROLES = new Set(['admin', 'moderator']);
+const { isGlobalOverrideRole } = require('../auth/authorization.policy');
 
 const toIdString = (value) => {
   if (!value) return null;
@@ -14,10 +13,6 @@ const toIdString = (value) => {
 const withSession = (query, session) => {
   if (!session) return query;
   return query.session(session);
-};
-
-const isGlobalOverrideRole = (actor) => {
-  return GLOBAL_OVERRIDE_ROLES.has(actor?.role);
 };
 
 const findChiefClan = async (userId, session = null) => {

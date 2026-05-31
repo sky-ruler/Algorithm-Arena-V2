@@ -110,7 +110,10 @@ const getMyClan = async (req, res, next) => {
     })
       .populate('chief', 'username email')
       .populate('members', 'username email status codingLevel points solvedProblems regNo')
-      .populate('requests', 'username email regNo');
+      .populate('requests', 'username email regNo')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
 
     if (!clan) {
       return res.status(404).json({ success: false, message: 'You are not assigned to any clan' });
@@ -129,6 +132,9 @@ const getClans = async (req, res, next) => {
       .populate('chief', 'username email')
       .populate('members', 'username email status codingLevel points')
       .populate('requests', 'username email')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email')
       .sort({ createdAt: -1 });
 
     return sendSuccess(res, { data: clans });
@@ -143,7 +149,10 @@ const getClan = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id)
       .populate('chief', 'username email')
       .populate('members', 'username email status codingLevel points')
-      .populate('requests', 'username email');
+      .populate('requests', 'username email')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
 
     if (!clan) {
       return res.status(404).json({ success: false, message: 'Clan not found' });
@@ -237,7 +246,10 @@ const getClanAdminStats = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id)
       .populate('chief', 'username email')
       .populate('members', 'username email status codingLevel points regNo branch year')
-      .populate('requests', 'username email regNo branch year');
+      .populate('requests', 'username email regNo branch year')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
 
     if (!clan) {
       return res.status(404).json({ success: false, message: 'Clan not found' });
@@ -276,7 +288,12 @@ const getClanAdminStats = async (req, res, next) => {
 const createClan = async (req, res, next) => {
   try {
     const { name, tag, description } = req.body;
-    const clan = await Clan.create({ name, tag, description });
+    const clan = await Clan.create({
+      name,
+      tag,
+      description,
+      createdBy: req.user?._id || req.user?.id || null,
+    });
     return sendSuccess(res, { statusCode: 201, data: clan, message: 'Clan created' });
   } catch (err) {
     if (err.code === 11000) {
@@ -290,19 +307,30 @@ const createClan = async (req, res, next) => {
 const updateClan = async (req, res, next) => {
   try {
     const { name, tag, description } = req.body;
-    const clan = await Clan.findByIdAndUpdate(
-      req.params.id,
-      { name, tag, description },
-      { new: true, runValidators: true }
-    )
-      .populate('chief', 'username email')
-      .populate('members', 'username email');
+    const clan = await Clan.findById(req.params.id);
 
     if (!clan) {
       return res.status(404).json({ success: false, message: 'Clan not found' });
     }
 
-    return sendSuccess(res, { data: clan, message: 'Clan updated' });
+    if (rejectArchivedClanMutation(res, clan)) {
+      return null;
+    }
+
+    clan.name = name ?? clan.name;
+    clan.tag = tag ?? clan.tag;
+    clan.description = description ?? clan.description;
+
+    await clan.save();
+
+    const populated = await Clan.findById(clan._id)
+      .populate('chief', 'username email')
+      .populate('members', 'username email')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
+
+    return sendSuccess(res, { data: populated, message: 'Clan updated' });
   } catch (err) {
     if (err.code === 11000) {
       return res.status(400).json({ success: false, message: 'Clan name or tag already exists in an active clan' });
@@ -336,6 +364,10 @@ const archiveClan = async (req, res, next) => {
       }
 
       clan.status = 'archived';
+      clan.archivedAt = new Date();
+      clan.archivedBy = req.user._id;
+      clan.restoredAt = null;
+      clan.restoredBy = null;
       await clan.save({ session });
       return null;
     });
@@ -344,7 +376,10 @@ const archiveClan = async (req, res, next) => {
 
     const clan = await Clan.findById(req.params.id)
       .populate('chief', 'username email')
-      .populate('members', 'username email');
+      .populate('members', 'username email')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
 
     return sendSuccess(res, { data: clan, message: 'Clan archived' });
   } catch (err) {
@@ -365,11 +400,18 @@ const restoreClan = async (req, res, next) => {
     }
 
     clan.status = 'active';
+    clan.archivedAt = null;
+    clan.archivedBy = null;
+    clan.restoredAt = new Date();
+    clan.restoredBy = req.user._id;
     await clan.save();
 
     const populated = await Clan.findById(clan._id)
       .populate('chief', 'username email')
-      .populate('members', 'username email');
+      .populate('members', 'username email')
+      .populate('createdBy', 'username email')
+      .populate('archivedBy', 'username email')
+      .populate('restoredBy', 'username email');
 
     return sendSuccess(res, { data: populated, message: 'Clan restored' });
   } catch (err) {
@@ -600,6 +642,10 @@ const addMember = async (req, res, next) => {
         return res.status(404).json({ success: false, message: 'Clan not found' });
       }
 
+      if (rejectArchivedClanMutation(res, clan)) {
+        return null;
+      }
+
       clanId = clan._id.toString();
       clanName = clan.name;
 
@@ -776,6 +822,10 @@ const rejectJoinRequest = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
+    if (rejectArchivedClanMutation(res, clan)) {
+      return null;
+    }
+
     if (isClanArchived(clan)) {
       return res.status(400).json({ success: false, message: 'Archived clans cannot be modified until restored' });
     }
@@ -801,6 +851,10 @@ const addClanNotice = async (req, res, next) => {
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
 
+    if (rejectArchivedClanMutation(res, clan)) {
+      return null;
+    }
+
     if (isClanArchived(clan)) {
       return res.status(400).json({ success: false, message: 'Archived clans cannot be modified until restored' });
     }
@@ -825,6 +879,10 @@ const removeClanNotice = async (req, res, next) => {
     const idx = Number(req.params.index);
     const clan = await Clan.findById(req.params.id);
     if (!clan) return res.status(404).json({ success: false, message: 'Clan not found' });
+
+    if (rejectArchivedClanMutation(res, clan)) {
+      return null;
+    }
 
     const scopeCheck = await canActorManageClan(req.user, clan);
     if (!scopeCheck.allowed) {

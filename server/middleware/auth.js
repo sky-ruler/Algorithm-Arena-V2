@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 const User = require('../src/features/users/User.model');
 const { env } = require('../config/env');
+const {
+  canAccessAdminOnlyAction,
+  canAccessChiefScopedAction,
+} = require('../src/features/auth/authorization.policy');
 
 // Guard: Protect routes for logged-in users
 exports.protect = async (req, res, next) => {
@@ -31,7 +35,7 @@ exports.protect = async (req, res, next) => {
 
 // Guard: Admin only access
 exports.admin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (canAccessAdminOnlyAction(req.user)) {
     return next();
   }
 
@@ -40,11 +44,7 @@ exports.admin = (req, res, next) => {
 
 // Guard: Admin or Clan Chief access
 exports.chiefOrAdmin = (req, res, next) => {
-  if (req.user && (
-    req.user.role === 'admin' || 
-    req.user.role === 'moderator' ||
-    req.user.role === 'clan-chief'
-  )) {
+  if (canAccessChiefScopedAction(req.user) || canAccessAdminOnlyAction(req.user) || req.user?.role === 'moderator') {
     return next();
   }
 
