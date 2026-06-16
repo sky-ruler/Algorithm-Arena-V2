@@ -139,14 +139,14 @@ const ChiefMembersTab = ({ clan }) => {
                   <td className="p-4 pl-6 font-bold text-sm text-primary flex items-center gap-3">
                     <div className="relative">
                       <div className="w-10 h-10 rounded-xl bg-glass-surface flex items-center justify-center font-black text-blue-400">
-                        {user.username[0].toUpperCase()}
+                        {(user.username?.[0] || user.email?.[0] || 'U').toUpperCase()}
                       </div>
                       <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#0f1115] ${isActive ? 'bg-green-500 animate-pulse' : isWarned ? 'bg-red-500' : 'bg-gray-500'}`} />
                     </div>
                     <div>
                       {/* MemberHoverCard replaces ProfilePopover — click opens full profile */}
                       <MemberHoverCard userId={user._id} username={user.username}>
-                        <span className="cursor-pointer hover:text-blue-400 transition-colors block">{user.username}</span>
+                        <span className="cursor-pointer hover:text-blue-400 transition-colors block">{user.username || user.email || 'Onboarding Pending'}</span>
                       </MemberHoverCard>
                       <span className="text-[10px] text-tertiary uppercase">{user.email}</span>
                     </div>

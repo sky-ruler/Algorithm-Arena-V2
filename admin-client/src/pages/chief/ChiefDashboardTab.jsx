@@ -231,12 +231,12 @@ const ChiefDashboardTab = ({ clan }) => {
                   <div className="flex items-center gap-3 w-1/3">
                     <div className="relative">
                       <div className="w-8 h-8 rounded-full bg-glass-surface flex items-center justify-center font-black text-xs text-primary">
-                        {member.username[0].toUpperCase()}
+                        {(member.username?.[0] || member.email?.[0] || 'U').toUpperCase()}
                       </div>
                       <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#0f1115] ${isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-primary truncate max-w-[120px]">{member.username}</p>
+                      <p className="text-sm font-bold text-primary truncate max-w-[120px]">{member.username || member.email || 'Onboarding Pending'}</p>
                       <p className="text-[10px] uppercase font-bold text-tertiary">Active {isActive ? 'Now' : '2d ago'}</p>
                     </div>
                   </div>
@@ -291,10 +291,10 @@ const ChiefDashboardTab = ({ clan }) => {
               <div key={reqUser._id} className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-black">
-                    {reqUser.username[0].toUpperCase()}
+                    {(reqUser.username?.[0] || reqUser.email?.[0] || 'U').toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-primary">{reqUser.username}</p>
+                    <p className="text-sm font-bold text-primary">{reqUser.username || reqUser.email || 'Onboarding Pending'}</p>
                     <p className="text-xs text-secondary">{reqUser.email}</p>
                   </div>
                 </div>

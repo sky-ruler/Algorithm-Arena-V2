@@ -264,9 +264,9 @@ const MembersTab = () => {
                     <MemberHoverCard userId={user._id} username={user.username}>
                       <div className="flex items-center gap-3 cursor-pointer">
                         <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center font-black transition-colors">
-                          {user.username[0].toUpperCase()}
+                          {(user.username?.[0] || user.email?.[0] || 'U').toUpperCase()}
                         </div>
-                        <span className="transition-colors">{user.username}</span>
+                        <span className="transition-colors">{user.username || user.email || 'Onboarding Pending'}</span>
                       </div>
                     </MemberHoverCard>
                   </td>

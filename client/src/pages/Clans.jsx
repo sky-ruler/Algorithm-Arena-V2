@@ -129,12 +129,12 @@ const ClanDashboard = ({ clan, userId, onLeave }) => {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-glass-surface flex items-center justify-center font-bold text-accent">
-                        {member.username[0].toUpperCase()}
+                        {(member.username?.[0] || member.email?.[0] || 'U').toUpperCase()}
                       </div>
                       <div>
                         <p className="font-bold text-primary flex items-center gap-2">
                           <MemberHoverCard userId={member._id} username={member.username}>
-                            {member.username}
+                            {member.username || member.email || 'Onboarding Pending'}
                           </MemberHoverCard>
                           {member._id === userId && (
                             <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black">YOU</span>
