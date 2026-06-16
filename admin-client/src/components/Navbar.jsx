@@ -29,17 +29,8 @@ const Navbar = ({ onLogout }) => {
   const { role, user } = useAuth();
 
   const navItems = [
-    { name: "Dashboard", path: "/dashboard", icon: FiGrid },
-    { name: "Leaderboard", path: "/leaderboard", icon: FiAward },
-    { name: "Clan", path: "/clans", icon: FiUsers },
-    { name: "Archives", path: "/resources", icon: FiFolder },
+    { name: "Command Center", path: "/", icon: FiShield },
   ];
-
-
-
-  if (role === 'clan-chief' || user?.isChief) {
-    navItems.push({ name: 'Clan Chief', path: '/chief-panel', icon: FiShield });
-  }
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -116,35 +107,11 @@ const Navbar = ({ onLogout }) => {
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
                           className="absolute right-0 mt-3 w-64 macos-glass p-2 z-50 border-accent/20 shadow-2xl origin-top-right overflow-hidden"
                         >
-                         <Link to="/profile" onClick={() => setUserDropdownOpen(false)} className="block px-4 py-3 bg-white/[0.03] rounded-xl mb-2 border border-white/5 hover:border-accent/30 hover:bg-accent/5 transition-all group">
-                             <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-1">Signed in as</p>
-                             <p className="text-sm font-bold text-primary group-hover:text-accent truncate transition-colors">{user?.username}</p>
-                             <p className="text-[10px] text-tertiary truncate">{user?.email || 'Authenticated User'}</p>
-                          </Link>
-
-                         <div className="space-y-1">
-                           <Link
-                             to="/profile"
-                             onClick={() => setUserDropdownOpen(false)}
-                             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-primary hover:bg-white/5 transition-all group/item"
-                           >
-                             <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center group-hover/item:bg-accent/20 transition-colors">
-                               <FiUser className="text-accent" />
-                             </div>
-                             <span>My Profile</span>
-                           </Link>
-
-                           <Link
-                             to="/settings"
-                             onClick={() => setUserDropdownOpen(false)}
-                             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-primary hover:bg-white/5 transition-all group/item"
-                           >
-                             <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center group-hover/item:bg-blue-500/20 transition-colors">
-                               <FiSettings className="text-blue-400" />
-                             </div>
-                             <span>Settings</span>
-                           </Link>
-                         </div>
+                          <div className="block px-4 py-3 bg-white/[0.03] rounded-xl mb-2 border border-white/5 shadow-inner">
+                              <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-1">Signed in as</p>
+                              <p className="text-sm font-bold text-primary truncate">{user?.username}</p>
+                              <p className="text-[10px] text-tertiary truncate">{user?.email || 'Authenticated User'}</p>
+                           </div>
 
                          <div className="mt-2 pt-2 border-t border-white/5">
                            <button
@@ -212,10 +179,10 @@ const Navbar = ({ onLogout }) => {
                 </div>
               )}
             </div>
-            <Link to="/profile" onClick={closeMenu} className="flex flex-col flex-1">
-              <span className="text-sm font-bold text-primary hover:text-accent transition-colors truncate w-40">{user?.username || 'Guest User'}</span>
+            <div className="flex flex-col flex-1">
+              <span className="text-sm font-bold text-primary truncate w-40">{user?.username || 'Guest User'}</span>
               <span className="text-[10px] text-tertiary uppercase tracking-wider font-bold">{role || 'Member'}</span>
-            </Link>
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -242,31 +209,7 @@ const Navbar = ({ onLogout }) => {
             })}
           </div>
 
-          <div className="space-y-1">
-            <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] px-3 mb-2">Account</p>
-            <Link
-              to="/profile"
-              onClick={closeMenu}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-3 rounded-lg transition-all",
-                location.pathname === "/profile" ? "bg-accent/15 text-accent" : "text-primary hover:bg-white/5"
-              )}
-            >
-              <FiUser className={location.pathname === "/profile" ? "text-accent" : "text-secondary"} />
-              <span className="font-medium">My Profile</span>
-            </Link>
-            <Link
-              to="/settings"
-              onClick={closeMenu}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-3 rounded-lg transition-all",
-                location.pathname === "/settings" ? "bg-accent/15 text-accent" : "text-primary hover:bg-white/5"
-              )}
-            >
-              <FiSettings className={location.pathname === "/settings" ? "text-accent" : "text-secondary"} />
-              <span className="font-medium">Settings</span>
-            </Link>
-          </div>
+          {/* Profile and Settings pages removed for admin-only client */}
 
           <div className="pt-4 border-t border-glass-border/40">
             <button

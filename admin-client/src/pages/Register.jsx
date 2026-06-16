@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiArrowRight, FiLock, FiMail } from 'react-icons/fi';
+import { FiArrowRight, FiLock, FiMail, FiUser } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import Card from '../components/Card';
 import PixelBlast from '../components/PixelBlast';
@@ -9,8 +9,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../context/useAuth';
 import Logo from '../components/Logo';
 
-const Login = ({ onLoginSuccess }) => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
+const Register = () => {
+  const [formData, setFormData] = useState({ username: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -37,14 +37,15 @@ const Login = ({ onLoginSuccess }) => {
     return () => observer.disconnect();
   }, []);
 
-  const isValid = useMemo(() => {
-    return formData.email.trim().length > 0 && formData.password.length > 0;
+  const canSubmit = useMemo(() => {
+    return formData.username.trim().length >= 3 && formData.email.trim().length > 0 && formData.password.length >= 6;
   }, [formData]);
 
   const validate = () => {
     const nextErrors = {};
+    if (formData.username.trim().length < 3) nextErrors.username = 'Username must be at least 3 characters';
     if (!formData.email.trim()) nextErrors.email = 'Email is required';
-    if (!formData.password) nextErrors.password = 'Password is required';
+    if (formData.password.length < 6) nextErrors.password = 'Password must be at least 6 characters';
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -61,27 +62,14 @@ const Login = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      const res = await api.post('/api/auth/login', formData);
-      const payload = res.data?.data;
-
-      if (payload?.role === 'admin') {
-        toast.error('Admin accounts are restricted to the Command Center only.');
-        setErrors({ form: 'Admin accounts are restricted to the Command Center only.' });
-        api.post('/api/auth/logout').catch(() => null);
-        return;
-      }
-
-      login(payload);
-
-      if (typeof onLoginSuccess === 'function') {
-        onLoginSuccess();
-      }
-
-      toast.success('Welcome back');
+      const res = await api.post('/api/auth/register', formData);
+      login(res.data?.data);
+      toast.success('Account created');
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.userMessage || 'Invalid credentials');
-      setErrors({ form: err.userMessage || 'Invalid credentials' });
+      const message = err.userMessage || 'Registration failed';
+      setErrors({ form: message });
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -93,10 +81,10 @@ const Login = ({ onLoginSuccess }) => {
 
       <div className="absolute inset-0 z-0 pointer-events-none">
         <PixelBlast
-          variant="circle"
+          variant="square"
           pixelSize={4}
           color={theme === 'dark' ? '#4f46e5' : '#4f46e5'}
-          patternScale={4}
+          patternScale={2}
           patternDensity={1}
           pixelSizeJitter={0}
           enableRipples
@@ -114,16 +102,13 @@ const Login = ({ onLoginSuccess }) => {
       </div>
 
       <div className="w-full max-w-md relative z-10 my-auto py-8">
-        <Card className="shadow-2xl shadow-black/10 dark:shadow-black/50">
+        <Card className="shadow-2xl shadow-black/10 dark:shadow-black/50" hover={true} variant='glass'>
           <div className="text-center mb-8">
             {/* GDG Branding */}
             <div className="flex flex-col items-center gap-3 mb-5">
               <Logo variant="hybrid" size="w-28 h-14" imgClassName="object-cover" />
             </div>
-            <Link to="/" className="inline-flex items-center justify-center gap-2 group mb-2">
-              <Logo variant="arena" size="sm" showText={true} />
-            </Link>
-            <h2 className="text-sm font-medium text-secondary">Welcome back, Pilot.</h2>
+            <h2 className="text-sm font-medium text-secondary">Join the ranks.</h2>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6" noValidate>
@@ -133,6 +118,24 @@ const Login = ({ onLoginSuccess }) => {
                 {errors.form}
               </div>
             )}
+
+            <div className="space-y-2">
+              <label className="field-label">Codename (Username)</label>
+              <div className="relative group">
+                <FiUser className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors" />
+                <input
+                  type="text"
+                  name="username"
+                  required
+                  value={formData.username}
+                  onChange={handleChange}
+                  className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
+                  placeholder="e.g. Neo"
+                  aria-invalid={Boolean(errors.username)}
+                />
+              </div>
+              {errors.username && <p className="text-red-500 text-sm">{errors.username}</p>}
+            </div>
 
             <div className="space-y-2">
               <label className="field-label">Email Address</label>
@@ -163,7 +166,7 @@ const Login = ({ onLoginSuccess }) => {
                   value={formData.password}
                   onChange={handleChange}
                   className="w-full bg-white/50 dark:bg-black/20 border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-gray-400"
-                  placeholder="********"
+                  placeholder="Minimum 6 characters"
                   aria-invalid={Boolean(errors.password)}
                 />
               </div>
@@ -172,17 +175,17 @@ const Login = ({ onLoginSuccess }) => {
 
             <button
               type="submit"
-              disabled={loading || !isValid}
+              disabled={loading || !canSubmit}
               className="w-full py-3.5 rounded-xl bg-accent hover:bg-accent-glow text-white font-bold transition-all shadow-lg shadow-accent/25 hover:shadow-accent/40 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Authenticating...
+                  Creating Profile...
                 </>
               ) : (
                 <>
-                  Enter Arena <FiArrowRight />
+                  Initialize Account <FiArrowRight />
                 </>
               )}
             </button>
@@ -190,9 +193,9 @@ const Login = ({ onLoginSuccess }) => {
 
           <div className="mt-6 text-center pt-6 border-t border-glass-border">
             <p className="text-sm text-secondary">
-              Don't have an account?{' '}
-              <Link to="/register" className="font-semibold text-accent hover:underline">
-                Sign up
+              Already have an account?{' '}
+              <Link to="/login" className="font-semibold text-accent hover:underline">
+                Log in
               </Link>
             </p>
           </div>
@@ -213,5 +216,5 @@ const Login = ({ onLoginSuccess }) => {
   );
 };
 
-export default Login;
+export default Register;
 

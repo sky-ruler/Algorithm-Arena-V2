@@ -64,9 +64,9 @@ const Login = ({ onLoginSuccess }) => {
       const res = await api.post('/api/auth/login', formData);
       const payload = res.data?.data;
 
-      if (payload?.role === 'admin') {
-        toast.error('Admin accounts are restricted to the Command Center only.');
-        setErrors({ form: 'Admin accounts are restricted to the Command Center only.' });
+      if (payload?.role !== 'admin') {
+        toast.error('Access restricted to Admin accounts only.');
+        setErrors({ form: 'Access restricted to Admin accounts only.' });
         api.post('/api/auth/logout').catch(() => null);
         return;
       }
@@ -78,7 +78,7 @@ const Login = ({ onLoginSuccess }) => {
       }
 
       toast.success('Welcome back');
-      navigate('/dashboard');
+      navigate('/');
     } catch (err) {
       toast.error(err.userMessage || 'Invalid credentials');
       setErrors({ form: err.userMessage || 'Invalid credentials' });
@@ -187,15 +187,6 @@ const Login = ({ onLoginSuccess }) => {
               )}
             </button>
           </form>
-
-          <div className="mt-6 text-center pt-6 border-t border-glass-border">
-            <p className="text-sm text-secondary">
-              Don't have an account?{' '}
-              <Link to="/register" className="font-semibold text-accent hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </div>
         </Card>
       </div>
 
