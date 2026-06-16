@@ -32,6 +32,7 @@ const Settings = () => {
     twitter: '',
     linkedin: '',
     website: '',
+    profilePicture: '',
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,9 +49,10 @@ const Settings = () => {
         twitter: user.twitter || '',
         linkedin: user.linkedin || '',
         website: user.website || '',
+        profilePicture: user.profilePicture || '',
       });
     }
-  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website]);
+  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture]);
 
   /**
    * Extract just the username when a user pastes a full profile URL.
@@ -90,7 +92,7 @@ const Settings = () => {
   };
 
   const handleAvatarSelect = (url) => {
-    updateUser({ profilePicture: url });
+    setFormData((prev) => ({ ...prev, profilePicture: url }));
     setShowAvatarPicker(false);
   };
 
@@ -99,7 +101,7 @@ const Settings = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onloadend = () => {
-      updateUser({ profilePicture: reader.result });
+      setFormData((prev) => ({ ...prev, profilePicture: reader.result }));
       setShowAvatarPicker(false);
     };
     reader.readAsDataURL(file);

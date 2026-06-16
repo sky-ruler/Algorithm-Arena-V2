@@ -211,3 +211,8 @@ The following items were mentioned in product context but are **not implemented 
 ### 4. Submission & Profile Endpoint Fixes
 - Resolved `404 (Not Found)` error on `/api/submissions/user/:username` by implementing `getSubmissionsByUsername` query matching on the backend.
 - Fixed `400 (Bad Request)` error on the Missions page by updating the client query to `/api/submissions/my-submissions` and adding a `/my` alias on the backend.
+
+### 5. Client Lint & Profile Saving Fixes
+- Fixed client build and ESLint warnings in `button.jsx` (Fast Refresh component-only exports) and `QuestionSetsTab.jsx` (empty catch statement).
+- Resolved profile card updating failures by correcting backend validator `updateMeSchema` (added string support for study years, allowed username-only social handles instead of raw URLs, and increased profile picture limit to 4MB to support base64 image data URIs).
+- Synced client-side `formData` in `Settings.jsx` to upload changed avatars/presets to the backend on clicking "Save Changes".

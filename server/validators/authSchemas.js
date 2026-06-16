@@ -25,14 +25,14 @@ const updateMeSchema = {
   body: z.object({
     bio:            z.string().trim().max(500).optional(),
     branch:         z.string().trim().max(100).optional(),
-    year:           z.number().int().min(1).max(6).optional(),
+    year:           z.string().trim().max(50).optional().or(z.literal('')),
     section:        z.string().trim().max(10).optional(),
     location:       z.string().trim().max(100).optional(),
-    github:         url,
-    twitter:        url,
-    linkedin:       url,
+    github:         z.string().trim().max(100).optional().or(z.literal('')),
+    twitter:        z.string().trim().max(100).optional().or(z.literal('')),
+    linkedin:       z.string().trim().max(100).optional().or(z.literal('')),
     website:        url,
-    profilePicture: z.string().trim().url().max(2048).optional().or(z.literal('')),
+    profilePicture: z.string().trim().max(4 * 1024 * 1024).optional().or(z.literal('')),
   }).strict(),
 };
 

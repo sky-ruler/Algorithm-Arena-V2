@@ -18,7 +18,7 @@ const defaultChallengeForm = {
   category:'Logic',tags:[],codeSnippets:[],functionName:'',testCases:[]
 };
 const prepareTestCases = (raw) => raw.filter(tc=>tc.label.trim()).map(tc=>{
-  let args=[]; try{args=JSON.parse(tc.args)}catch{} return{label:tc.label,args,expected:tc.expected};
+  let args=[]; try{args=JSON.parse(tc.args)}catch{/* ignore parse error */} return{label:tc.label,args,expected:tc.expected};
 });
 const emptyTestCase = ()=>({label:'',args:'[]',expected:''});
 
