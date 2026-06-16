@@ -13,9 +13,7 @@ import {
   FiSettings,
   FiChevronDown,
   FiFolder,
-  FiStar,
-  FiMessageSquare,
-  FiRadio
+  FiStar
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";

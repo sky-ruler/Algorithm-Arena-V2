@@ -1,4 +1,5 @@
 const Challenge = require('./Challenge.model');
+const QuestionSet = require('./QuestionSet.model');
 const { sendSuccess } = require('../../../utils/response');
 const { logAudit } = require('../../../utils/audit');
 const csv = require('csv-parser');
@@ -52,10 +53,31 @@ const getChallenges = async (req, res, next) => {
 
     const skip = (page - 1) * limit;
 
-    const [total, challenges] = await Promise.all([
+    let [total, challenges] = await Promise.all([
       Challenge.countDocuments(filter),
       Challenge.find(filter).populate('questionSetId').sort(sort).skip(skip).limit(limit),
     ]);
+
+    // Auto-create Challenge documents for question sets that don't have them yet
+    if (setId && total === 0 && !search && !difficulty && !category) {
+      const questionSet = await QuestionSet.findById(setId);
+      if (questionSet && questionSet.questions && questionSet.questions.length > 0) {
+        const challengesToInsert = questionSet.questions.map(q => ({
+          title: q.title,
+          description: q.description || '',
+          difficulty: q.difficulty || 'Easy',
+          points: q.points || 100,
+          category: q.category || 'Logic',
+          tags: q.tags || [],
+          codeSnippets: q.codeSnippets || [],
+          functionName: q.functionName || '',
+          testCases: q.testCases || [],
+          questionSetId: questionSet._id,
+        }));
+        challenges = await Challenge.insertMany(challengesToInsert);
+        total = challenges.length;
+      }
+    }
 
     return sendSuccess(res, {
       data: challenges,

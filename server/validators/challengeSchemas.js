@@ -59,6 +59,7 @@ const challengeQuerySchema = {
     search: z.string().trim().optional(),
     difficulty: z.enum(['Easy', 'Medium', 'Hard']).optional(),
     category: z.string().trim().optional(),
+    setId: z.string().trim().optional(),
     sortBy: z.enum(['createdAt', 'title', 'difficulty', 'points']).default('createdAt'),
     sortDir: z.enum(['asc', 'desc']).default('desc'),
   }),

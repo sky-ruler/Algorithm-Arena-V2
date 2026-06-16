@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { FiGrid, FiList } from 'react-icons/fi';
+import { FiGrid, FiList, FiX, FiTarget, FiClock } from 'react-icons/fi';
 import { api } from '../lib/api';
 import { mockChallenges } from '../lib/mockData';
 import ChallengeCard from '../components/Card';
@@ -48,12 +48,35 @@ const Missions = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialSetId = searchParams.get('setId') || '';
+  const navigate = useNavigate();
+
+  // Fetch the active question set details when setId is present
+  const activeSetQuery = useQuery({
+    queryKey: ['question-set', initialSetId],
+    queryFn: async () => {
+      if (!initialSetId) return null;
+      try {
+        const res = await api.get(`/api/sets/${initialSetId}`);
+        return res.data.data || null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!initialSetId,
+  });
+
+  const activeSet = activeSetQuery.data;
+
+  const clearSetFilter = () => {
+    navigate('/missions', { replace: true });
+    setFilters(prev => ({ ...prev, setId: '' }));
+  };
   
   const submissionsQuery = useQuery({
     queryKey: ['my-submissions'],
     queryFn: async () => {
       try {
-        const res = await api.get('/api/submissions/my');
+        const res = await api.get('/api/submissions/my-submissions');
         return res.data.data || [];
       } catch { return []; }
     }
@@ -133,12 +156,27 @@ const Missions = () => {
           };
         }
 
+        // When filtering by a specific question set, don't fall back to mock data
+        if (filters.setId) {
+          return {
+            data: [],
+            meta: { page: 1, totalPages: 1, total: 0 },
+          };
+        }
+
         const filteredMock = getFilteredMockData();
         return {
           data: filteredMock,
           meta: { page: 1, totalPages: Math.ceil(filteredMock.length / filters.limit) || 1, total: filteredMock.length },
         };
       } catch {
+        // When filtering by a specific question set, don't fall back to mock data
+        if (filters.setId) {
+          return {
+            data: [],
+            meta: { page: 1, totalPages: 1, total: 0 },
+          };
+        }
         const filteredMock = getFilteredMockData();
         return {
           data: filteredMock,
@@ -147,8 +185,36 @@ const Missions = () => {
       }
     },
   });
+  // When filtering by setId, if no standalone Challenge docs exist, fall back
+  // to the questions embedded in the QuestionSet document itself.
+  const challenges = useMemo(() => {
+    const apiData = challengesQuery.data?.data || [];
 
-  const challenges = challengesQuery.data?.data?.length ? challengesQuery.data.data : mockChallenges;
+    if (filters.setId) {
+      if (apiData.length > 0) return apiData;
+      // Fallback: use the embedded questions from the question set
+      if (activeSet?.questions?.length) {
+        return activeSet.questions.map((q, i) => ({
+          _id: `set-q-${i}`,
+          title: q.title,
+          description: q.description || '',
+          difficulty: q.difficulty || 'Easy',
+          points: q.points || 100,
+          category: q.category || 'General',
+          tags: q.tags || [],
+          codeSnippets: q.codeSnippets || [],
+          functionName: q.functionName || '',
+          testCases: q.testCases || [],
+          createdAt: activeSet.createdAt,
+          questionSetId: filters.setId,
+        }));
+      }
+      return [];
+    }
+
+    return apiData.length > 0 ? apiData : mockChallenges;
+  }, [challengesQuery.data, filters.setId, activeSet]);
+
   const meta = challengesQuery.data?.meta || { page: 1, totalPages: 1, total: challenges.length };
 
   const groupedChallenges = useMemo(() => {
@@ -195,11 +261,39 @@ const Missions = () => {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="All Missions"
-        subtitle="Browse all available challenges, filter by difficulty, and push your limits."
+        title={activeSet ? activeSet.title : "All Missions"}
+        subtitle={activeSet
+          ? `Week ${activeSet.weekNumber} • Target: ${activeSet.targetLevel} • Due ${new Date(activeSet.deadline).toLocaleDateString()}`
+          : "Browse all available challenges, filter by difficulty, and push your limits."
+        }
         showBack={true}
         backUrl="/dashboard"
       />
+
+      {/* Question Set Filter Banner */}
+      {activeSet && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-accent/30 bg-accent/5">
+          <FiTarget className="text-accent flex-shrink-0" size={18} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-primary">
+              Viewing Question Set: <span className="text-accent">{activeSet.title}</span>
+            </p>
+            <p className="text-[11px] text-secondary mt-0.5 flex items-center gap-2">
+              <span>{activeSet.questions?.length || 0} questions</span>
+              <span className="text-white/20">•</span>
+              <FiClock size={10} className="text-orange-400" />
+              <span>Due {new Date(activeSet.deadline).toLocaleDateString()}</span>
+            </p>
+          </div>
+          <button
+            onClick={clearSetFilter}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-secondary border border-white/10 hover:text-primary hover:border-white/20 hover:bg-white/5 transition-all"
+          >
+            <FiX size={12} />
+            Show All Missions
+          </button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="macos-glass p-3 sm:p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-xs sm:text-base">

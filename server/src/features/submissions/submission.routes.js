@@ -8,6 +8,7 @@ const {
   getLeaderboard,
   getSubmissionById,
   updateSubmissionStatus,
+  getSubmissionsByUsername,
 } = require('./submission.controller');
 
 const { protect, admin, chiefOrAdmin } = require('../../../middleware/auth');
@@ -19,6 +20,7 @@ const {
   submissionQuerySchema,
   leaderboardQuerySchema,
   mySubmissionQuerySchema,
+  userSubmissionQuerySchema,
 } = require('../../../validators/submissionSchemas');
 
 router
@@ -27,7 +29,9 @@ router
   .post(protect, validate(submissionCreateSchema), submitCode);
 
 router.get('/my-submissions', protect, validate(mySubmissionQuerySchema), getMySubmissions);
+router.get('/my', protect, validate(mySubmissionQuerySchema), getMySubmissions);
 router.get('/leaderboard', protect, validate(leaderboardQuerySchema), getLeaderboard);
+router.get('/user/:username', protect, validate(userSubmissionQuerySchema), getSubmissionsByUsername);
 
 router
   .route('/:id')

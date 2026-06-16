@@ -191,3 +191,23 @@ The following items were mentioned in product context but are **not implemented 
 - The present release is best understood as a **workflow and review management platform** for coding events, not yet a full competitive programming judge or wider workplace suite.
 
 # DSA
+
+## V2 Enhancements & Bug Fixes
+
+### 1. Clan Chat (Uplink) Removal
+- Removed the deprecated Clan Chat ("Uplink") feature from both client and server to declutter the codebase.
+- Cleaned up related tabs in `Clans.jsx` and removed socket events `join_clan`/`leave_clan` in `socket.js`.
+
+### 2. Question Set Visibility & Multi-Set Display
+- Updated `Dashboard.jsx` to render all currently active question sets instead of just the first one.
+- Gated Missions page title and filter header to display active Question Set metadata when `setId` is active.
+- Prevented mock/placeholder challenges from displaying on the Missions page when a specific `setId` query filter is active, rendering a clean empty state instead.
+
+### 3. Database Auto-Wipe Protection
+- Added a safety check in `seed.js` to query the `User` collection. If users exist in the database, the automated seeding process is skipped.
+- This prevents the local development server (running nodemon) from wiping and re-seeding the shared MongoDB Atlas database upon every source code save or restart.
+- Standard manual seeding (`npm run seed`) still clears and re-seeds the database as intended.
+
+### 4. Submission & Profile Endpoint Fixes
+- Resolved `404 (Not Found)` error on `/api/submissions/user/:username` by implementing `getSubmissionsByUsername` query matching on the backend.
+- Fixed `400 (Bad Request)` error on the Missions page by updating the client query to `/api/submissions/my-submissions` and adding a `/my` alias on the backend.

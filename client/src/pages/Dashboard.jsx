@@ -129,7 +129,11 @@ const Dashboard = () => {
   const pending = summary?.pending ?? profile?.pendingCount ?? 0;
   const solvedPct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
-  const activeSet = setsQ.data?.find((s) => new Date(s.deadline) > new Date());
+  const activeSets = useMemo(
+    () => (setsQ.data || []).filter((s) => new Date(s.deadline) > new Date()),
+    [setsQ.data],
+  );
+  const activeSet = activeSets[0];
   // const featuredChallenge = activeSet?.questions?.[0] || challenges[0];
 
   const recentSubs = useMemo(
@@ -273,6 +277,55 @@ const Dashboard = () => {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Other Active Question Sets ────────── */}
+      {activeSets.length > 1 && (
+        <motion.div {...fd(0.1)}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-black text-primary">
+              Active Question Sets
+            </h2>
+            <span className="text-xs text-tertiary font-bold">
+              {activeSets.length} sets active
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {activeSets.map((set, i) => (
+              <Link
+                key={set._id}
+                to={`/missions?setId=${set._id}`}
+                className="group block"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="p-4 rounded-xl border border-white/[0.08] hover:border-accent/40 transition-all
+                    hover:shadow-[0_0_20px_rgba(var(--accent-rgb),0.15)]"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h3 className="text-sm font-bold text-primary group-hover:text-accent transition-colors line-clamp-1">
+                      {set.title}
+                    </h3>
+                    <span className="text-[9px] font-black text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">
+                      Week {set.weekNumber}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-tertiary font-bold">
+                    <span>{set.questions?.length || 0} questions</span>
+                    <span className="text-white/10">•</span>
+                    <span>Due {new Date(set.deadline).toLocaleDateString()}</span>
+                    <span className="text-white/10">•</span>
+                    <span className="text-accent">
+                      {set.questions?.reduce((a, q) => a + (q.points || 0), 0) || 0} XP
+                    </span>
+                  </div>
+                </motion.div>
+              </Link>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* ── Stat bar ────────────────────────── */}
       <motion.div {...fd(0.12)}>

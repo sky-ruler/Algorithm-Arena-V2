@@ -16,7 +16,6 @@ import {
   FiTarget,
   FiX,
   FiTrash2,
-  FiSend,
   FiAlertTriangle,
 } from 'react-icons/fi';
 import PageHeader from '../components/PageHeader';
@@ -29,96 +28,7 @@ import MemberHoverCard from '../components/MemberHoverCard';
 import { api } from '../lib/api';
 import { useAuth } from '../context/useAuth';
 
-const InternalClanChat = ({ clanId, isArchived }) => {
-  const { user } = useAuth();
-  const [message, setMessage] = useState('');
-  
-  const queryClient = useQueryClient();
 
-  const { data: messages = [], isLoading } = useQuery({
-    queryKey: ['chat', clanId],
-    queryFn: async () => {
-      if (!clanId || isArchived) return [];
-      const res = await api.get(`/api/chat/${clanId}`);
-      return res.data.data;
-    },
-    enabled: !!clanId && !isArchived,
-    refetchInterval: 5000
-  });
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (isArchived) return;
-    if (!message.trim()) return;
-    const text = message;
-    setMessage('');
-    try {
-      await api.post(`/api/chat/${clanId}`, { content: text });
-      queryClient.invalidateQueries(['chat', clanId]);
-    } catch {
-      setMessage(text); // restore on error
-      toast.error('Failed to send message');
-    }
-  };
-
-  return (
-    <div className="h-full flex flex-col relative">
-      {isArchived && (
-        <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">
-          Chat is disabled while this clan is archived.
-        </div>
-      )}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar max-h-[400px]">
-        {isArchived ? (
-          <p className="text-secondary text-sm text-center">Archived clan chat is read only.</p>
-        ) : isLoading ? (
-          <p className="text-secondary text-sm text-center">Establishing secure connection...</p>
-        ) : messages.length === 0 ? (
-          <p className="text-secondary text-sm text-center">No transmissions yet. Be the first.</p>
-        ) : (
-          messages.map(msg => {
-            const isMe = msg.sender?._id === user?.id;
-            return (
-              <div key={msg._id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-black uppercase text-tertiary">
-                    {msg.sender?.username || 'Unknown'}
-                  </span>
-                  {msg.sender?.role === 'clan-chief' && (
-                    <span className="text-[8px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">Chief</span>
-                  )}
-                </div>
-                <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${isMe ? 'bg-accent/20 text-primary border border-accent/30 rounded-tr-none' : 'bg-white/5 text-secondary border border-white/5 rounded-tl-none'}`}>
-                  {msg.content}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-      
-      <div className="p-3 border-t border-glass-border/40 mt-auto">
-        <form onSubmit={handleSend} className="relative">
-          <input
-            type="text"
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-            disabled={isArchived}
-            placeholder="Transmit message..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-3 pr-10 text-sm text-primary placeholder-tertiary focus:outline-none focus:border-accent/50 transition-colors"
-          />
-          <button 
-            type="submit"
-            disabled={isArchived || !message.trim()}
-            className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-accent/20 text-accent hover:bg-accent hover:text-white disabled:opacity-50 disabled:hover:bg-accent/20 disabled:hover:text-accent transition-colors"
-          >
-            <FiSend className="text-sm" />
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-};
 
 /* ─── Stat Card for the Clan Dashboard ────────────────────── */
 const StatCard = ({ icon, label, value, color }) => {
@@ -143,7 +53,7 @@ const ClanDashboard = ({ clan, userId, onLeave, globalNotice }) => {
   // eslint-disable-next-line no-unused-vars
   const requests = clan.requests || [];
   const notices = clan.notices || ['No announcements yet. Stay tuned!'];
-  const [activeTab, setActiveTab] = useState('roster'); // roster, notices, chat
+  const [activeTab, setActiveTab] = useState('roster'); // roster, notices
   const isArchived = clan.status === 'archived';
 
   return (
@@ -211,12 +121,7 @@ const ClanDashboard = ({ clan, userId, onLeave, globalNotice }) => {
         >
           Notice Board
         </button>
-        <button 
-          className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'chat' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary'}`} 
-          onClick={() => setActiveTab('chat')}
-        >
-          Uplink
-        </button>
+
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -330,17 +235,7 @@ const ClanDashboard = ({ clan, userId, onLeave, globalNotice }) => {
           </div>
         )}
 
-        {activeTab === 'chat' && (
-          <div className="h-[500px]">
-            <BaseCard variant='solid' className="h-full" hover={false}>
-              <h3 className="text-section-title font-bold flex items-center gap-2 mb-4">
-                <FiMessageSquare className="text-accent" />
-                Uplink
-              </h3>
-              <InternalClanChat clanId={clan._id} isArchived={isArchived} />
-            </BaseCard>
-          </div>
-        )}
+
       </div>
     </div>
   );

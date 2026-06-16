@@ -405,6 +405,38 @@ const updateSubmissionStatus = async (req, res, next) => {
 };
 
 
+const getSubmissionsByUsername = async (req, res, next) => {
+  try {
+    const { username } = req.params;
+    const User = require('../users/User.model');
+    const targetUser = await User.findOne({ username });
+    if (!targetUser) {
+      res.status(404);
+      throw new Error('User not found');
+    }
+
+    const filter = { userId: targetUser._id };
+    let query = Submission.find(filter)
+      .populate('challengeId', 'title difficulty points')
+      .sort({ submittedAt: -1 });
+
+    if (req.query.limit) {
+      query = query.limit(Number(req.query.limit));
+    }
+
+    const submissions = await query;
+
+    return sendSuccess(res, {
+      data: submissions,
+      meta: {
+        count: submissions.length,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   submitCode,
   getSubmissions,
@@ -412,5 +444,6 @@ module.exports = {
   getLeaderboard,
   getSubmissionById,
   updateSubmissionStatus,
+  getSubmissionsByUsername,
 };
 

@@ -9,6 +9,7 @@ const Badge = require('./src/features/badges/Badge.model');
 const Resource = require('./src/features/resources/Resource.model');
 const ChatMessage = require('./src/features/chat/ChatMessage.model');
 const Submission = require('./src/features/submissions/Submission.model'); // Assumed path based on patterns
+const QuestionSet = require('./src/features/challenges/QuestionSet.model');
 
 const challenges = [
   {
@@ -62,6 +63,13 @@ async function seedDatabase(isStandalone = false) {
       console.log('🌱 Connecting to database...');
       await mongoose.connect(process.env.MONGO_URI);
       console.log('✅ Connected to MongoDB Atlas');
+    } else {
+      // Safety check when auto-seeding on server start
+      const userCount = await User.countDocuments({});
+      if (userCount > 0) {
+        console.log(`ℹ️ Database already populated (${userCount} users found). Skipping auto-seeding to prevent data loss.`);
+        return;
+      }
     }
 
     console.log('🧹 Clearing old data...');
@@ -78,6 +86,27 @@ async function seedDatabase(isStandalone = false) {
 
     console.log('🌱 Seeding Challenges...');
     await Challenge.insertMany(challenges);
+
+    console.log('🌱 Syncing Question Set Challenges...');
+    const questionSets = await QuestionSet.find();
+    for (const qs of questionSets) {
+      if (qs.questions && qs.questions.length > 0) {
+        const qsChallenges = qs.questions.map(q => ({
+          title: q.title,
+          description: q.description || '',
+          difficulty: q.difficulty || 'Easy',
+          points: q.points || 100,
+          category: q.category || 'Logic',
+          tags: q.tags || [],
+          codeSnippets: q.codeSnippets || [],
+          functionName: q.functionName || '',
+          testCases: q.testCases || [],
+          questionSetId: qs._id,
+        }));
+        await Challenge.insertMany(qsChallenges);
+        console.log(`- Re-synced ${qsChallenges.length} challenges for set "${qs.title}"`);
+      }
+    }
 
     console.log('🌱 Seeding Badges...');
     await Badge.insertMany(badges);

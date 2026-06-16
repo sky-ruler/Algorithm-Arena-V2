@@ -57,6 +57,15 @@ const mySubmissionQuerySchema = {
   }),
 };
 
+const userSubmissionQuerySchema = {
+  params: z.object({
+    username: z.string().trim().min(3),
+  }),
+  query: z.object({
+    limit: z.coerce.number().int().positive().max(100).optional(),
+  }),
+};
+
 module.exports = {
   submissionIdParamsSchema,
   submissionCreateSchema,
@@ -64,4 +73,5 @@ module.exports = {
   submissionQuerySchema,
   leaderboardQuerySchema,
   mySubmissionQuerySchema,
+  userSubmissionQuerySchema,
 };

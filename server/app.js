@@ -24,7 +24,7 @@ const userRoutes = require('./src/features/users/user.routes');
 const noticeRoutes = require('./src/features/notices/notice.routes');
 const resourceRoutes = require('./src/features/resources/resource.routes');
 const badgeRoutes = require('./src/features/badges/badge.routes');
-const chatRoutes = require('./src/features/chat/chat.routes');
+
 
 try {
   dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -113,7 +113,7 @@ const createApp = () => {
   app.use('/api/notices', noticeRoutes);
   app.use('/api/resources', resourceRoutes);
   app.use('/api/badges', badgeRoutes);
-  app.use('/api/chat', chatRoutes);
+
   app.use('/api/docs', express.static(path.join(__dirname, 'docs')));
 
   app.get('/api', (req, res) => {
