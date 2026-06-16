@@ -220,3 +220,8 @@ The following items were mentioned in product context but are **not implemented 
 ### 6. WebSocket Connection URL Fix
 - Updated the client-side socket initialization in `useSocket.js` to check `VITE_API_BASE_URL` if `VITE_API_URL` is not provided.
 - This ensures that when built and hosted on a static provider (like Vercel at `www.algorithm-arena.one`), the socket connection correctly targets the Render backend host (`algorithm-arena-v2.onrender.com`) instead of attempting to connect to the frontend domain itself.
+
+### 7. Mock Data Fallbacks Removed
+- Removed fallback logic that injected mock challenges and mock members when backend requests returned empty results or failed.
+- The website now cleanly renders standard empty state pages instead of displaying local mock data.
+- Cleared all unused mock imports to maintain a 100% clean linter and production build.
