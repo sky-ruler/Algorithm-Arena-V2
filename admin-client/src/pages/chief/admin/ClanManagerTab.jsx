@@ -20,7 +20,7 @@ import {
 
 const ClanManagerTab = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, confirmSessionIfNeeded } = useAuth();
   const [assignModal, setAssignModal] = useState({ open: false, user: null });
   const [selectedClanForAssign, setSelectedClanForAssign] = useState('');
   const [viewClanId, setViewClanId] = useState(null);
@@ -191,6 +191,22 @@ const ClanManagerTab = () => {
     const canRestoreCurrentClan = canRestoreClan(user, clan);
     const canDeleteCurrentClan = canDeleteClan(user, clan);
     const canManageMembers = canManageClanMembers(user, clan);
+
+    const handleDemote = async (member) => {
+      if (!canManageMembers) return;
+      if (!window.confirm(`Demote ${member.username} to regular member?`)) {
+        return;
+      }
+      try {
+        await confirmSessionIfNeeded();
+        await updateRoleMutation.mutateAsync({ userId: member._id, role: 'member' });
+      } catch (err) {
+        if (err.message !== 'User cancelled re-authentication') {
+          toast.error(err.response?.data?.message || "Failed to update role");
+        }
+      }
+    };
+
     return (
       <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
         <button onClick={() => setViewClanId(null)} className="flex items-center gap-2 text-tertiary hover:text-primary transition-colors text-sm font-bold bg-white/5 px-4 py-2 rounded-xl w-fit">
@@ -381,12 +397,7 @@ const ClanManagerTab = () => {
                             </button>
                           ) : (
                             <button 
-                              onClick={() => {
-                                if (!canManageMembers) return;
-                                if (window.confirm(`Demote ${member.username} to regular member?`)) {
-                                  updateRoleMutation.mutate({ userId: member._id, role: 'member' });
-                                }
-                              }}
+                              onClick={() => handleDemote(member)}
                               disabled={!canManageMembers}
                               className="p-2 rounded-lg bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
                               title="Demote to Member"

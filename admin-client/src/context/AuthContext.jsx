@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api, setUnauthorizedHandler } from '../lib/api';
 import AuthContext from './context';
+import { signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../lib/firebase';
 
 const getStoredUser = () => {
   const raw = localStorage.getItem('user');
@@ -119,6 +121,27 @@ export const AuthProvider = ({ children }) => {
     });
   }, []);
 
+  const confirmSessionIfNeeded = useCallback(async () => {
+    const ROLE_CHANGE_WINDOW_MS = 5 * 60 * 1000;
+    const lastConfirmedTime = user?.lastConfirmedAt ? new Date(user.lastConfirmedAt).getTime() : 0;
+    
+    if (Date.now() - lastConfirmedTime > ROLE_CHANGE_WINDOW_MS) {
+      if (!window.confirm("For security, this action requires you to re-verify your Google credentials. Click OK to authenticate now.")) {
+        throw new Error('User cancelled re-authentication');
+      }
+      
+      toast.loading("Opening Google sign-in...", { id: 'reauth-session' });
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken(true);
+      toast.loading("Verifying session...", { id: 'reauth-session' });
+      const confirmRes = await api.post('/api/auth/confirm-session', { idToken });
+      
+      const newConfirmedAt = confirmRes.data?.lastConfirmedAt || new Date().toISOString();
+      updateUser({ lastConfirmedAt: newConfirmedAt });
+      toast.success("Identity verified!", { id: 'reauth-session' });
+    }
+  }, [user?.lastConfirmedAt, updateUser]);
+
   const value = useMemo(
     () => ({
       user,
@@ -129,8 +152,9 @@ export const AuthProvider = ({ children }) => {
       logout,
       refreshMe,
       updateUser,
+      confirmSessionIfNeeded,
     }),
-    [user, loading, login, logout, refreshMe, updateUser]
+    [user, loading, login, logout, refreshMe, updateUser, confirmSessionIfNeeded]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

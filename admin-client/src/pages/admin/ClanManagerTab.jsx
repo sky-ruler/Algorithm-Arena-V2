@@ -6,9 +6,11 @@ import { FiUsers, FiUserPlus, FiPercent, FiX, FiShield, FiArrowLeft, FiTrash2, F
 import BaseCard from '../../components/BaseCard';
 import MemberHoverCard from '../../components/MemberHoverCard';
 import { api } from '../../lib/api';
+import { useAuth } from '../../context/useAuth';
 
 const ClanManagerTab = () => {
   const queryClient = useQueryClient();
+  const { confirmSessionIfNeeded } = useAuth();
   const [assignModal, setAssignModal] = useState({ open: false, user: null });
   const [selectedClanForAssign, setSelectedClanForAssign] = useState('');
   const [viewClanId, setViewClanId] = useState(null);
@@ -171,6 +173,20 @@ const ClanManagerTab = () => {
     }
   });
 
+  const handleDemote = async (member) => {
+    if (!window.confirm(`Demote ${member.username} to regular member?`)) {
+      return;
+    }
+    try {
+      await confirmSessionIfNeeded();
+      await updateRoleMutation.mutateAsync({ userId: member._id, role: 'member' });
+    } catch (err) {
+      if (err.message !== 'User cancelled re-authentication') {
+        toast.error(err.response?.data?.message || "Failed to update role");
+      }
+    }
+  };
+
   if (viewClanId) {
     const clan = clanDetailQuery.data;
     const isArchived = clan?.status === 'archived';
@@ -331,11 +347,7 @@ const ClanManagerTab = () => {
                                 </button>
                               ) : (
                                 <button 
-                                  onClick={() => {
-                                    if (window.confirm(`Demote ${member.username} to regular member?`)) {
-                                      updateRoleMutation.mutate({ userId: member._id, role: 'member' });
-                                    }
-                                  }}
+                                  onClick={() => handleDemote(member)}
                                   className="p-2 rounded-lg bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
                                   title="Demote to Member"
                                 >
