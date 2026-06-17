@@ -61,6 +61,7 @@ const updateMeSchema = {
     linkedin:       z.string().trim().max(100).optional().or(z.literal('')),
     website:        url,
     profilePicture: z.string().trim().max(4 * 1024 * 1024).optional().or(z.literal('')),
+    preferredLanguage: z.enum(['javascript', 'python', 'java', 'cpp', 'c']).optional(),
   }).strict(),
 };
 

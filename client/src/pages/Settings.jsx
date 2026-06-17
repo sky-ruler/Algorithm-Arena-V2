@@ -33,6 +33,7 @@ const Settings = () => {
     linkedin: '',
     website: '',
     profilePicture: '',
+    preferredLanguage: 'javascript',
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,9 +51,10 @@ const Settings = () => {
         linkedin: user.linkedin || '',
         website: user.website || '',
         profilePicture: user.profilePicture || '',
+        preferredLanguage: user.preferredLanguage || 'javascript',
       });
     }
-  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture]);
+  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture, user?.preferredLanguage]);
 
   /**
    * Extract just the username when a user pastes a full profile URL.
@@ -201,6 +203,18 @@ const Settings = () => {
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiMapPin className="text-accent" size={14} /> Location</label>
                 <input name="location" className="field-input" placeholder="e.g. Bhubaneswar, India" value={formData.location} onChange={handleChange} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Preferred Code Language</label>
+                <select name="preferredLanguage" className="field-select" value={formData.preferredLanguage} onChange={handleChange}>
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                  <option value="java">Java</option>
+                  <option value="cpp">C++</option>
+                  <option value="c">C</option>
+                </select>
+                <p className="text-[10px] text-tertiary">Default language pre-selected in the code editor</p>
               </div>
             </div>
           </Card>

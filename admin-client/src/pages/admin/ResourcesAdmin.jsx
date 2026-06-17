@@ -24,7 +24,7 @@ const ResourcesAdmin = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['admin-resources']);
+      queryClient.invalidateQueries({ queryKey: ['admin-resources'] });
       toast.success('Resource deployed to Intel Archives.');
       setFormData({ title: '', category: 'DP', type: 'PDF', url: '' });
     },
@@ -36,7 +36,7 @@ const ResourcesAdmin = () => {
       await api.delete(`/api/resources/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['admin-resources']);
+      queryClient.invalidateQueries({ queryKey: ['admin-resources'] });
       toast.success('Resource purged.');
     }
   });

@@ -435,8 +435,8 @@ const getMe = async (req, res, next) => {
 
 const updateMe = async (req, res, next) => {
   try {
-    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture } = req.body;
-    
+    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture, preferredLanguage } = req.body;
+
     const user = await User.findByIdAndUpdate(
       req.user.id,
       {
@@ -450,7 +450,8 @@ const updateMe = async (req, res, next) => {
           twitter,
           linkedin,
           website,
-          profilePicture
+          profilePicture,
+          preferredLanguage
         }
       },
       { new: true, runValidators: true }

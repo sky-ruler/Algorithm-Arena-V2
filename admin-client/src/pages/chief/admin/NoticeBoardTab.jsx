@@ -26,7 +26,7 @@ const NoticeBoardTab = () => {
     },
     onSuccess: () => {
       toast.success('Notice published globally!');
-      queryClient.invalidateQueries(['admin-notices']);
+      queryClient.invalidateQueries({ queryKey: ['admin-notices'] });
       setCreateModal(false);
       setForm({ content: '', priority: 'General', isPinned: false });
     },
@@ -42,7 +42,7 @@ const NoticeBoardTab = () => {
     },
     onSuccess: () => {
       toast.success('Notice removed');
-      queryClient.invalidateQueries(['admin-notices']);
+      queryClient.invalidateQueries({ queryKey: ['admin-notices'] });
     }
   });
 

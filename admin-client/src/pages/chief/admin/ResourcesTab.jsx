@@ -31,7 +31,7 @@ const ResourcesTab = () => {
     },
     onSuccess: () => {
       toast.success('Resource added!');
-      queryClient.invalidateQueries(['admin-resources']);
+      queryClient.invalidateQueries({ queryKey: ['admin-resources'] });
       setUploadModal(false);
       setForm({ title: '', folder: activeFolder, type: 'PDF', url: '', sizeBytes: 0 });
       setFileName('');
@@ -48,7 +48,7 @@ const ResourcesTab = () => {
     },
     onSuccess: () => {
       toast.success('Resource deleted');
-      queryClient.invalidateQueries(['admin-resources']);
+      queryClient.invalidateQueries({ queryKey: ['admin-resources'] });
     }
   });
 

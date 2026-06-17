@@ -29,7 +29,7 @@ const ChiefMembersTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Member level updated');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
       setLevelModal({ open: false, user: null });
     }
   });
@@ -41,7 +41,7 @@ const ChiefMembersTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Warning sent to member via email');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
       setWarnModal({ open: false, user: null });
       setWarnMessage('');
     },

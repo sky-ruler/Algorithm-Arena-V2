@@ -133,6 +133,61 @@ const repairClanIndexes = async () => {
   }
 };
 
+// Auto-repair user collection indexes on startup.
+// Replaces legacy non-partial unique indexes on username/regNo (which index
+// explicit nulls and cause E11000 dup key errors) with partial ones.
+const repairUserIndexes = async () => {
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info('Skipping user index repair (not production)');
+    return;
+  }
+
+  try {
+    const db = mongoose.connection.db;
+    const userCollection = db.collection('users');
+    const indexArray = await userCollection.listIndexes().toArray();
+
+    // Clear any null usernames/regNos so the new partial unique index can build.
+    await userCollection.updateMany({ username: null }, { $unset: { username: '' } });
+    await userCollection.updateMany({ regNo: null }, { $unset: { regNo: '' } });
+
+    const targets = ['username', 'regNo'];
+    for (const spec of indexArray) {
+      if (spec.name === '_id_') continue;
+      const field = Object.keys(spec.key || {})[0];
+      const isTarget = targets.includes(field);
+      const hasPartialFilter = !!spec.partialFilterExpression;
+      if (isTarget && !hasPartialFilter) {
+        try {
+          await userCollection.dropIndex(spec.name);
+          logger.info(`✅ Dropped legacy user index: ${spec.name}`);
+        } catch (err) {
+          logger.warn(`⚠️  Could not drop ${spec.name}: ${err.message}`);
+        }
+      }
+    }
+
+    for (const field of targets) {
+      try {
+        await userCollection.createIndex(
+          { [field]: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { [field]: { $type: 'string' } },
+            background: true,
+            name: `${field}_unique_partial`,
+          }
+        );
+        logger.info(`✅ Created partial unique index for ${field}`);
+      } catch (err) {
+        logger.warn(`⚠️  Could not create ${field} index: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    logger.error('Failed to repair user indexes', { error: err.message, stack: err.stack });
+  }
+};
+
 const startServer = async () => {
   try {
     await connectDB();
@@ -142,6 +197,9 @@ const startServer = async () => {
 
     // Auto-repair clan indexes (one-time production fix)
     await repairClanIndexes();
+
+    // Auto-repair user indexes (username/regNo dup-key fix)
+    await repairUserIndexes();
 
 
     // Initialize Socket.io

@@ -28,7 +28,7 @@ const MembersTab = () => {
     onSuccess: (res) => {
       toast.success(res.data?.message || "Admin access granted successfully");
       setAdminEmail('');
-      queryClient.invalidateQueries(['admin-all-users']);
+      queryClient.invalidateQueries({ queryKey: ['admin-all-users'] });
     }
   });
 
@@ -74,7 +74,7 @@ const MembersTab = () => {
     },
     onSuccess: () => {
       toast.success("Role updated successfully");
-      queryClient.invalidateQueries(['admin-all-users']);
+      queryClient.invalidateQueries({ queryKey: ['admin-all-users'] });
       setMenuOpen(null);
     }
   });
@@ -85,7 +85,7 @@ const MembersTab = () => {
     },
     onSuccess: () => {
       toast.success("User banned");
-      queryClient.invalidateQueries(['admin-all-users']);
+      queryClient.invalidateQueries({ queryKey: ['admin-all-users'] });
       setMenuOpen(null);
     },
     onError: () => {
