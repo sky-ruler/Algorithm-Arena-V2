@@ -21,6 +21,8 @@ import {
   FiMessageSquare,
   FiUser,
   FiPlay,
+  FiChevronDown,
+  FiChevronUp,
 } from "react-icons/fi";
 
 // Monaco & Shared Assets
@@ -109,7 +111,7 @@ const ChallengeDetails = () => {
 
   const [repoUrl, setRepoUrl] = useState("");
   const [codeByLang, setCodeByLang] = useState({});
-  const [language, setLanguage] = useState("javascript");
+  const [language, setLanguage] = useState(user?.preferredLanguage || "javascript");
   const [submitting, setSubmitting] = useState(false);
   const [leftTab, setLeftTab] = useState("description");
   const [rightTab, setRightTab] = useState("code"); // 'code', 'ai', 'tests'
@@ -129,6 +131,11 @@ const ChallengeDetails = () => {
   // Resizer state
   const [leftWidth, setLeftWidth] = useState(45);
   const containerRef = useRef(null);
+
+  // Bottom (test/result) panel sizing — lets the editor grow when the
+  // test-case panel takes up too much vertical space.
+  const [bottomHeight, setBottomHeight] = useState(224); // matches old h-56
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
   
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute("data-theme") === "dark",
@@ -166,6 +173,25 @@ const ChallengeDetails = () => {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
+  const handleBottomResize = (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = bottomHeight;
+    const handleMove = (ev) => {
+      // Dragging the handle up grows the panel (shrinks the editor); down shrinks it.
+      let h = startH - (ev.clientY - startY);
+      if (h < 80) h = 80;
+      if (h > 520) h = 520;
+      setBottomHeight(h);
+    };
+    const handleUp = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+  };
+
   const setCodeSnippet = (val) => {
     const newVal =
       typeof val === "function" ? val(codeByLang[language] || "") : val;
@@ -680,7 +706,20 @@ const ChallengeDetails = () => {
 
           {/* ── Test / Result Panel (normal mode only) ── */}
           {!isReviewMode && (
-            <div className="h-56 flex flex-col border-t border-black/10 dark:border-white/10 shrink-0">
+            <div
+              className="relative flex flex-col border-t border-black/10 dark:border-white/10 shrink-0"
+              style={{ height: bottomCollapsed ? "auto" : `${bottomHeight}px` }}
+            >
+              {/* Drag handle to resize the panel (and grow the editor) */}
+              {!bottomCollapsed && (
+                <div
+                  onMouseDown={handleBottomResize}
+                  className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize flex justify-center items-center group z-10"
+                  title="Drag to resize"
+                >
+                  <div className="w-16 h-1 bg-white/15 group-hover:bg-accent rounded-full transition-colors" />
+                </div>
+              )}
               {/* Panel header */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-black/10 dark:border-white/10 shrink-0">
                 <div className="flex gap-0.5">
@@ -690,7 +729,7 @@ const ChallengeDetails = () => {
                   ].map(({ key, label }) => (
                     <button
                       key={key}
-                      onClick={() => setBottomTab(key)}
+                      onClick={() => { setBottomTab(key); setBottomCollapsed(false); }}
                       className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
                         bottomTab === key
                           ? "bg-accent/15 text-accent"
@@ -701,21 +740,31 @@ const ChallengeDetails = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  onClick={handleRun}
-                  disabled={running}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-green-500/15 text-green-400 text-xs font-bold hover:bg-green-500/25 transition-all disabled:opacity-60 border border-green-500/20"
-                >
-                  {running ? (
-                    <FiRefreshCw size={11} className="animate-spin" />
-                  ) : (
-                    <FiPlay size={11} />
-                  )}
-                  {running ? "Running…" : "Run"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setBottomCollapsed((c) => !c)}
+                    className="flex items-center justify-center w-7 h-7 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors"
+                    title={bottomCollapsed ? "Expand panel" : "Collapse panel"}
+                  >
+                    {bottomCollapsed ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                  </button>
+                  <button
+                    onClick={handleRun}
+                    disabled={running}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-green-500/15 text-green-400 text-xs font-bold hover:bg-green-500/25 transition-all disabled:opacity-60 border border-green-500/20"
+                  >
+                    {running ? (
+                      <FiRefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      <FiPlay size={11} />
+                    )}
+                    {running ? "Running…" : "Run"}
+                  </button>
+                </div>
               </div>
 
               {/* Panel body */}
+              {!bottomCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
                 {bottomTab === "input" ? (
                   /* ── Test tab ── */
@@ -889,6 +938,7 @@ const ChallengeDetails = () => {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

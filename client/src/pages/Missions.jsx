@@ -165,6 +165,44 @@ const Missions = () => {
 
   const meta = challengesQuery.data?.meta || { page: 1, totalPages: 1, total: challenges.length };
 
+  // Determine which difficulties actually have questions (ignoring the active
+  // difficulty filter) so we only render filter chips that are usable.
+  const availableDifficultiesQuery = useQuery({
+    queryKey: ["challenge-difficulties", filters.search, filters.category, filters.setId],
+    queryFn: async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("limit", 1000);
+        if (filters.search) params.set("search", filters.search);
+        if (filters.category) params.set("category", filters.category);
+        if (filters.setId) params.set("setId", filters.setId);
+        const res = await api.get(`/api/challenges?${params.toString()}`);
+        const data = res.data.data || [];
+        return [...new Set(data.map((c) => c.difficulty).filter(Boolean))];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const availableDifficulties = useMemo(() => {
+    const set = new Set(availableDifficultiesQuery.data || []);
+    // Include difficulties from a question set's embedded questions (used as a
+    // fallback when no standalone Challenge documents exist).
+    if (filters.setId && activeSet?.questions?.length) {
+      activeSet.questions.forEach((q) => set.add(q.difficulty || "Easy"));
+    }
+    return set;
+  }, [availableDifficultiesQuery.data, filters.setId, activeSet]);
+
+  // Until we know what's available, show every chip to avoid flicker.
+  const visibleDifficultyChips = useMemo(() => {
+    if (availableDifficulties.size === 0) return difficultyChips;
+    return difficultyChips.filter(
+      (chip) => chip.value === "" || availableDifficulties.has(chip.value),
+    );
+  }, [availableDifficulties]);
+
   const groupedChallenges = useMemo(() => {
     if (filters.grouping === 'none') return { "All Missions": challenges };
 
@@ -295,7 +333,7 @@ const Missions = () => {
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Left Side: Difficulty Chips */}
           <div className="chip-group flex flex-wrap gap-2">
-            {difficultyChips.map((chip) => (
+            {visibleDifficultyChips.map((chip) => (
               <button
                 key={chip.label}
                 className={`chip-btn ${filters.difficulty === chip.value ? "active" : ""}`}

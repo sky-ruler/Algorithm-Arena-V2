@@ -1,25 +1,30 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FiDownload, FiFileText, FiFolder, FiLink } from 'react-icons/fi';
-import { api } from '../lib/api';
+import { api, API_BASE_URL } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import BaseCard from '../components/BaseCard';
 import SkeletonCard from '../components/SkeletonCard';
 import EmptyState from '../components/EmptyState';
 
 const Resources = () => {
-  const [activeCategory, setActiveCategory] = useState('');
+  const [activeFolder, setActiveFolder] = useState('');
 
   const { data: resources = [], isLoading } = useQuery({
-    queryKey: ['resources', activeCategory],
+    queryKey: ['resources', activeFolder],
     queryFn: async () => {
-      const url = activeCategory ? `/api/resources?category=${activeCategory}` : '/api/resources';
+      const url = activeFolder
+        ? `/api/resources?folder=${encodeURIComponent(activeFolder)}`
+        : '/api/resources';
       const res = await api.get(url);
       return res.data.data;
     }
   });
 
-  const categories = ['All', 'DP', 'Graphs', 'Trees', 'Arrays'];
+  const folders = ['All', 'Arrays', 'Linked Lists', 'DP', 'Graphs', 'Trees', 'Stacks & Queues', 'Strings', 'Sorting'];
+
+  // Uploaded files are stored as a relative backend path; external links are absolute.
+  const resolveFileUrl = (url) => (!url || url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
 
   const getIcon = (type) => {
     if (type === 'PDF') return <FiFileText className="text-red-400" />;
@@ -37,17 +42,17 @@ const Resources = () => {
       />
 
       <div className="flex gap-2 pb-4 overflow-x-auto">
-        {categories.map(cat => (
+        {folders.map(folder => (
           <button
-            key={cat}
-            onClick={() => setActiveCategory(cat === 'All' ? '' : cat)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
-              (activeCategory === cat || (cat === 'All' && !activeCategory))
+            key={folder}
+            onClick={() => setActiveFolder(folder === 'All' ? '' : folder)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors whitespace-nowrap ${
+              (activeFolder === folder || (folder === 'All' && !activeFolder))
                 ? 'bg-accent/20 text-accent border border-accent/30'
                 : 'bg-white/5 text-secondary border border-transparent hover:bg-white/10'
             }`}
           >
-            {cat}
+            {folder}
           </button>
         ))}
       </div>
@@ -71,7 +76,7 @@ const Resources = () => {
                     <h3 className="font-bold text-primary leading-tight">{res.title}</h3>
                     <div className="flex gap-2 mt-1">
                       <span className="text-[10px] uppercase font-black tracking-wider text-tertiary bg-white/5 px-2 rounded">
-                        {res.category}
+                        {res.folder}
                       </span>
                       <span className="text-[10px] uppercase font-black tracking-wider text-tertiary">
                         {res.sizeBytes ? `${(res.sizeBytes / 1024 / 1024).toFixed(2)} MB` : 'LINK'}
@@ -80,9 +85,9 @@ const Resources = () => {
                   </div>
                 </div>
               </div>
-              <a 
-                href={res.url} 
-                target="_blank" 
+              <a
+                href={resolveFileUrl(res.url)}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="mt-auto flex items-center justify-center gap-2 w-full py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm font-bold transition-colors"
               >

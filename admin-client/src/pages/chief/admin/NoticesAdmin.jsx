@@ -24,7 +24,7 @@ const NoticesAdmin = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['admin-notices']);
+      queryClient.invalidateQueries({ queryKey: ['admin-notices'] });
       toast.success('Transmission Broadcasted Globally.');
       setFormData({ title: '', content: '', type: 'Standard' });
     },
@@ -36,7 +36,7 @@ const NoticesAdmin = () => {
       await api.delete(`/api/notices/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['admin-notices']);
+      queryClient.invalidateQueries({ queryKey: ['admin-notices'] });
       toast.success('Transmission Revoked.');
     }
   });

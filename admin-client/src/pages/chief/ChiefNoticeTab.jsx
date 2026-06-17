@@ -24,7 +24,7 @@ const ChiefNoticeTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Notice posted to clan');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
       setCreateModal(false);
       setNoticeText('');
     }
@@ -37,7 +37,7 @@ const ChiefNoticeTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Notice removed');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
     }
   });
 

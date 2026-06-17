@@ -14,8 +14,6 @@ const userSchema = new mongoose.Schema({
   },
   username: {
     type: String,
-    unique: true,
-    sparse: true,
     trim: true,
     minlength: [3, 'Username must be at least 3 characters'],
     maxlength: [30, 'Username must be at most 30 characters'],
@@ -61,8 +59,6 @@ const userSchema = new mongoose.Schema({
   },
   regNo: {
     type: String,
-    unique: true,
-    sparse: true,
     validate: {
       validator: (v) => !v || /^[a-zA-Z0-9]{6,20}$/.test(v),
       message: 'Invalid registration number format',
@@ -72,6 +68,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['Beginner', 'Intermediate', 'Advanced'],
     default: 'Beginner',
+  },
+  preferredLanguage: {
+    type: String,
+    enum: ['javascript', 'python', 'java', 'cpp', 'c'],
+    default: 'javascript',
   },
   points: {
     type: Number,
@@ -112,5 +113,18 @@ const userSchema = new mongoose.Schema({
   linkedin: { type: String, default: '' },
   website: { type: String, default: '' },
 });
+
+// Partial unique indexes: only documents where the field is a string are
+// indexed, so multiple users without a username/regNo (or with null) never
+// collide. A plain `sparse` unique index would still index explicit `null`s
+// and throw E11000 dup key errors.
+userSchema.index(
+  { username: 1 },
+  { unique: true, partialFilterExpression: { username: { $type: 'string' } } }
+);
+userSchema.index(
+  { regNo: 1 },
+  { unique: true, partialFilterExpression: { regNo: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('User', userSchema);

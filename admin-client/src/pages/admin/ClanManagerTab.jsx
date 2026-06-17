@@ -49,7 +49,7 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Clan created successfully!');
-      queryClient.invalidateQueries(['admin-clans']);
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
       setCreateModal({ open: false, name: '', tag: '', description: '' });
     },
     onError: (err) => {
@@ -64,8 +64,8 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Clan archived');
-      queryClient.invalidateQueries(['admin-clans']);
-      if (viewClanId) queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
+      if (viewClanId) queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
     },
     onError: (err) => {
       toast.error(err.response?.data?.message || 'Failed to archive clan');
@@ -79,8 +79,8 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Clan restored');
-      queryClient.invalidateQueries(['admin-clans']);
-      if (viewClanId) queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
+      if (viewClanId) queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
     },
     onError: (err) => {
       toast.error(err.response?.data?.message || 'Failed to restore clan');
@@ -94,8 +94,8 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Clan permanently deleted');
-      queryClient.invalidateQueries(['admin-clans']);
-      queryClient.invalidateQueries(['admin-unassigned-users']);
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-unassigned-users'] });
       setViewClanId(null);
     },
     onError: (err) => {
@@ -110,9 +110,9 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Member assigned successfully!');
-      queryClient.invalidateQueries(['admin-clans']);
-      queryClient.invalidateQueries(['admin-unassigned-users']);
-      if (viewClanId) queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-unassigned-users'] });
+      if (viewClanId) queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
       setAssignModal({ open: false, user: null });
       setSelectedClanForAssign('');
     },
@@ -136,9 +136,9 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success('Member removed from clan');
-      queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
-      queryClient.invalidateQueries(['admin-clans']);
-      queryClient.invalidateQueries(['admin-unassigned-users']);
+      queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-unassigned-users'] });
     },
     onError: (err) => {
       toast.error(err.response?.data?.message || 'Failed to remove member');
@@ -151,8 +151,8 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success("Clan chief updated");
-      queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
-      queryClient.invalidateQueries(['admin-clans']);
+      queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
     },
     onError: () => {
       toast.error("Failed to update clan chief");
@@ -165,8 +165,8 @@ const ClanManagerTab = () => {
     },
     onSuccess: () => {
       toast.success("Role updated");
-      queryClient.invalidateQueries(['admin-clan-detail', viewClanId]);
-      queryClient.invalidateQueries(['admin-clans']);
+      queryClient.invalidateQueries({ queryKey: ['admin-clan-detail', viewClanId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-clans'] });
     },
     onError: () => {
       toast.error("Failed to update role");

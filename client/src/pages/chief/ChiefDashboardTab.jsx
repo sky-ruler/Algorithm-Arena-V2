@@ -45,7 +45,7 @@ const ChiefDashboardTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Join request approved');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
     }
   });
 
@@ -56,7 +56,7 @@ const ChiefDashboardTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Join request rejected');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
     }
   });
 
@@ -68,7 +68,7 @@ const ChiefDashboardTab = ({ clan }) => {
     onSuccess: () => {
       toast.success('Warning sent and user flagged.');
       setWarningModal({ open: false, user: null, message: '' });
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
     }
   });
 
@@ -79,7 +79,7 @@ const ChiefDashboardTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Clan archived');
-      queryClient.invalidateQueries(['chief-clan-info']);
+      queryClient.invalidateQueries({ queryKey: ['chief-clan-info'] });
     },
     onError: (err) => {
       toast.error(err?.response?.data?.message || 'Failed to archive clan');

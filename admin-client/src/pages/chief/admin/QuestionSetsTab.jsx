@@ -48,7 +48,7 @@ const QuestionSetsTab = () => {
     },
     onSuccess: () => {
       toast.success('Question Set published! Emails sent to members.');
-      queryClient.invalidateQueries(['admin-question-sets']);
+      queryClient.invalidateQueries({ queryKey: ['admin-question-sets'] });
       setView('list');
       setForm({
         title: '', weekNumber: 1, deadline: '', targetLevel: 'Both', questions: [{ ...initialQuestionState }]
@@ -70,7 +70,7 @@ const QuestionSetsTab = () => {
     },
     onSuccess: (data) => {
       toast.success(data.message || 'Challenges imported successfully!');
-      queryClient.invalidateQueries(['admin-question-sets']);
+      queryClient.invalidateQueries({ queryKey: ['admin-question-sets'] });
       setImportModalOpen(false);
     },
     onError: (err) => {

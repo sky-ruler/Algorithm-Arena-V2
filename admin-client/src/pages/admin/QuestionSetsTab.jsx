@@ -35,18 +35,34 @@ const QuestionSetsTab = () => {
   const [leetcodeInput,setLeetcodeInput] = useState('');
   const [isFetchingLC,setIsFetchingLC] = useState(false);
   const [snippetLang,setSnippetLang] = useState('');
+  const [editingSetId,setEditingSetId] = useState(null);
+  const [deleteSetTarget,setDeleteSetTarget] = useState(null);
+
+  const blankForm = ()=>({title:'',weekNumber:1,deadline:'',targetLevel:'Both',questions:[{...initialQuestionState}]});
 
   const setsQuery = useQuery({queryKey:['admin-question-sets'],queryFn:async()=>{try{const r=await api.get('/api/sets');return r.data.data||[]}catch{return[]}}});
 
   const createSetMutation = useMutation({
     mutationFn:async(d)=>(await api.post('/api/sets',d)).data,
-    onSuccess:()=>{toast.success('Question Set published!');qc.invalidateQueries(['admin-question-sets']);setView('list');setForm({title:'',weekNumber:1,deadline:'',targetLevel:'Both',questions:[{...initialQuestionState}]})},
+    onSuccess:()=>{toast.success('Question Set published!');qc.invalidateQueries({ queryKey: ['admin-question-sets'] });qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] });setView('list');setForm(blankForm())},
+    onError:(e)=>toast.error(e.response?.data?.message||'Failed')
+  });
+
+  const updateSetMutation = useMutation({
+    mutationFn:async({id,body})=>(await api.put(`/api/sets/${id}`,body)).data,
+    onSuccess:()=>{toast.success('Question Set updated!');qc.invalidateQueries({ queryKey: ['admin-question-sets'] });qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] });setView('list');setEditingSetId(null);setForm(blankForm())},
+    onError:(e)=>toast.error(e.response?.data?.message||'Failed')
+  });
+
+  const deleteSetMutation = useMutation({
+    mutationFn:async(id)=>api.delete(`/api/sets/${id}`),
+    onSuccess:()=>{toast.success('Question Set deleted');qc.invalidateQueries({ queryKey: ['admin-question-sets'] });qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] });setDeleteSetTarget(null)},
     onError:(e)=>toast.error(e.response?.data?.message||'Failed')
   });
 
   const importMutation = useMutation({
     mutationFn:async(f)=>{const fd=new FormData();fd.append('file',f);return(await api.post('/api/challenges/import',fd,{headers:{'Content-Type':'multipart/form-data'}})).data},
-    onSuccess:(d)=>{toast.success(d.message||'Imported!');qc.invalidateQueries(['admin-question-sets']);setImportModalOpen(false)},
+    onSuccess:(d)=>{toast.success(d.message||'Imported!');qc.invalidateQueries({ queryKey: ['admin-question-sets'] });setImportModalOpen(false)},
     onError:(e)=>toast.error(e.response?.data?.message||'Failed')
   });
 
@@ -72,19 +88,19 @@ const QuestionSetsTab = () => {
 
   const createChallengeMutation = useMutation({
     mutationFn:async(d)=>api.post('/api/challenges',d),
-    onSuccess:()=>{toast.success('Challenge created!');setCreateChallengeForm(defaultChallengeForm);setLeetcodeInput('');setView('challenges');qc.invalidateQueries(['admin-manage-challenges'])},
+    onSuccess:()=>{toast.success('Challenge created!');setCreateChallengeForm(defaultChallengeForm);setLeetcodeInput('');setView('challenges');qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] })},
     onError:(e)=>toast.error(e.response?.data?.message||'Failed')
   });
 
   const updateChallengeMutation = useMutation({
     mutationFn:async(d)=>api.put(`/api/challenges/${d.id}`,d.body),
-    onSuccess:()=>{toast.success('Updated!');setEditingChallenge(null);qc.invalidateQueries(['admin-manage-challenges'])},
+    onSuccess:()=>{toast.success('Updated!');setEditingChallenge(null);qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] })},
     onError:(e)=>toast.error(e.response?.data?.message||'Failed')
   });
 
   const deleteChallengeMutation = useMutation({
     mutationFn:async(id)=>api.delete(`/api/challenges/${id}`),
-    onSuccess:()=>{toast.success('Deleted!');setDeleteTarget(null);qc.invalidateQueries(['admin-manage-challenges'])},
+    onSuccess:()=>{toast.success('Deleted!');setDeleteTarget(null);qc.invalidateQueries({ queryKey: ['admin-manage-challenges'] })},
     onError:(e)=>toast.error(e.response?.data?.message||'Failed')
   });
 
@@ -109,7 +125,25 @@ const QuestionSetsTab = () => {
   const handleRemoveQuestion=(i)=>{if(form.questions.length===1)return;setForm(p=>({...p,questions:p.questions.filter((_,j)=>j!==i)}))};
   const updateQuestion=(i,f,v)=>{const nq=[...form.questions];nq[i][f]=v;setForm({...form,questions:nq})};
   const updateHint=(qi,hi,v)=>{const nq=[...form.questions];nq[qi].hints[hi]=v;setForm({...form,questions:nq})};
-  const handlePublish=(e)=>{e.preventDefault();const fq=form.questions.map(q=>({...q,testCases:prepareTestCases(q.testCases||[])}));createSetMutation.mutate({...form,questions:fq})};
+  const handleStartCreate=()=>{setEditingSetId(null);setForm(blankForm());setView('create')};
+  const handleEditSet=(set)=>{
+    setEditingSetId(set._id);
+    setForm({
+      title:set.title||'',
+      weekNumber:set.weekNumber||1,
+      deadline:set.deadline?new Date(set.deadline).toISOString().slice(0,10):'',
+      targetLevel:set.targetLevel||'Both',
+      questions:(set.questions||[]).map(q=>({
+        ...initialQuestionState,
+        ...q,
+        hints:(q.hints&&q.hints.length)?q.hints:[''],
+        leetcodeSlug:'',
+        testCases:(q.testCases||[]).map(tc=>({label:tc.label||'',args:JSON.stringify(tc.args??[]),expected:tc.expected??''})),
+      })),
+    });
+    setView('create');
+  };
+  const handlePublish=(e)=>{e.preventDefault();const fq=form.questions.map(q=>({...q,testCases:prepareTestCases(q.testCases||[])}));if(editingSetId){updateSetMutation.mutate({id:editingSetId,body:{...form,questions:fq}})}else{createSetMutation.mutate({...form,questions:fq})}};
   const handleCreateChallengeSubmit=(e)=>{e.preventDefault();createChallengeMutation.mutate({...createChallengeForm,testCases:prepareTestCases(createChallengeForm.testCases)})};
   const handleUpdateChallengeSubmit=(e)=>{e.preventDefault();if(!editingChallenge)return;updateChallengeMutation.mutate({id:editingChallenge._id,body:{title:editingChallenge.title,description:editingChallenge.description,link:editingChallenge.link||'',difficulty:editingChallenge.difficulty,points:Number(editingChallenge.points),category:editingChallenge.category,functionName:editingChallenge.functionName||'',testCases:prepareTestCases(editingChallenge.testCases||[])}})};
 
@@ -148,7 +182,7 @@ const QuestionSetsTab = () => {
               {view==='create_challenge'?'Back to Challenges':<><FiPlus /> New Challenge</>}
             </button>
           ):(
-            <button onClick={()=>setView('create')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 ${view==='create'?'bg-green-500 text-white':'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}><FiPlus /> Create New Set</button>
+            <button onClick={handleStartCreate} className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 ${view==='create'?'bg-green-500 text-white':'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}><FiPlus /> Create New Set</button>
           )}
         </div>
       </div>
@@ -208,7 +242,10 @@ const QuestionSetsTab = () => {
                 ))}
               </AnimatePresence>
             </div>
-            <div className="flex justify-end"><button type="submit" disabled={createSetMutation.isLoading} className="btn-primary w-full md:w-auto px-8 py-3 text-sm font-bold shadow-[0_0_20px_rgba(168,85,247,0.4)]">{createSetMutation.isLoading?'Publishing...':'Publish Question Set & Notify'}</button></div>
+            <div className="flex justify-end gap-2">
+              {editingSetId&&<button type="button" onClick={()=>{setEditingSetId(null);setForm(blankForm());setView('list')}} className="btn-secondary px-6 py-3 text-sm font-bold">Cancel Edit</button>}
+              <button type="submit" disabled={createSetMutation.isLoading||updateSetMutation.isLoading} className="btn-primary w-full md:w-auto px-8 py-3 text-sm font-bold shadow-[0_0_20px_rgba(168,85,247,0.4)]">{editingSetId?(updateSetMutation.isLoading?'Saving...':'Save Changes'):(createSetMutation.isLoading?'Publishing...':'Publish Question Set & Notify')}</button>
+            </div>
           </form>
         </motion.div>
       )}
@@ -233,6 +270,10 @@ const QuestionSetsTab = () => {
                       const dc=q.difficulty==='Easy'?'text-green-400':q.difficulty==='Medium'?'text-yellow-400':'text-red-400';
                       return(<div key={qi} className="flex justify-between items-center text-sm p-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors border border-transparent hover:border-white/5"><span className="text-secondary truncate pr-2 max-w-[60%] font-medium">{q.title}</span><div className="flex gap-3 text-xs font-bold"><span className={dc}>{q.difficulty}</span><span className="text-accent flex items-center gap-1"><FiZap size={10}/> {q.points} XP</span></div></div>)
                     })}
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
+                    <button onClick={()=>handleEditSet(set)} className="btn-secondary py-1.5 px-4 text-xs font-bold hover:bg-accent/10 hover:text-accent transition-colors">Edit</button>
+                    <button onClick={()=>setDeleteSetTarget(set)} className="btn-secondary py-1.5 px-4 text-xs font-bold hover:bg-red-500/10 hover:text-red-400 transition-colors">Delete</button>
                   </div>
                 </BaseCard>
               </motion.div>
@@ -315,6 +356,8 @@ const QuestionSetsTab = () => {
       )}
 
       {deleteTarget&&<ConfirmDialog title="Delete Challenge" message={`Delete "${deleteTarget.title}"?`} onConfirm={()=>deleteChallengeMutation.mutate(deleteTarget._id)} onCancel={()=>setDeleteTarget(null)}/>}
+
+      {deleteSetTarget&&<ConfirmDialog title="Delete Question Set" message={`Delete "${deleteSetTarget.title}" and its generated challenges? This cannot be undone.`} onConfirm={()=>deleteSetMutation.mutate(deleteSetTarget._id)} onCancel={()=>setDeleteSetTarget(null)}/>}
 
       {/* Import Modal */}
       <AnimatePresence>
