@@ -8,7 +8,12 @@ const resourceSchema = new mongoose.Schema({
     required: true 
   },
   type: { type: String, enum: ['PDF', 'JSON', 'LINK'], required: true },
-  url: { type: String, required: true },
+  // External link (LINK type) or, for uploaded files, the relative file endpoint.
+  url: { type: String, default: '' },
+  // Base64-encoded bytes for uploaded files (PDFs). Excluded from queries by
+  // default so list endpoints stay lightweight; served via GET /:id/file.
+  fileData: { type: String, select: false },
+  mimeType: { type: String },
   sizeBytes: { type: Number },
   uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });

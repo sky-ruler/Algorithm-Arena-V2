@@ -48,12 +48,10 @@ const StatCard = ({ icon, label, value, color }) => {
 
 /* ─── Clan Dashboard (when user IS in a clan) ─────────────── */
 
-const ClanDashboard = ({ clan, userId, onLeave, globalNotice }) => {
+const ClanDashboard = ({ clan, userId, onLeave }) => {
   const members = clan.members || [];
   // eslint-disable-next-line no-unused-vars
   const requests = clan.requests || [];
-  const notices = clan.notices || ['No announcements yet. Stay tuned!'];
-  const [activeTab, setActiveTab] = useState('roster'); // roster, notices
   const isArchived = clan.status === 'archived';
 
   return (
@@ -108,134 +106,66 @@ const ClanDashboard = ({ clan, userId, onLeave, globalNotice }) => {
         <StatCard icon={FiAward} label="Chief" value={clan.chief?.username || 'None'} color="bg-yellow-500/15 text-yellow-400" />
       </div>
 
-      <div className="macos-glass p-2 inline-flex gap-2 mb-2">
-        <button 
-          className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary'}`} 
-          onClick={() => setActiveTab('roster')}
-        >
-          Roster
-        </button>
-        <button 
-          className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'notices' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary'}`} 
-          onClick={() => setActiveTab('notices')}
-        >
-          Notice Board
-        </button>
-
-      </div>
+      {/* Notice Board tab button removed in alignment with upstream deletion */}
 
       <div className="grid grid-cols-1 gap-6">
-        {activeTab === 'notices' && (
-          <div className="h-full">
-            <BaseCard variant="solid" hover={false} className="h-full flex flex-col min-h-[400px]">
-              <h3 className="text-section-title font-bold flex items-center gap-2 mb-4 shrink-0">
-                <FiMessageSquare className="text-accent" />
-                Notice Board
-              </h3>
-
-              <div className="space-y-3 overflow-y-auto flex-1 pr-2 custom-scrollbar max-h-[500px]">
-                {globalNotice && (
+        <div className="h-full">
+          <BaseCard variant='solid' className="h-full" hover={false}>
+            <h3 className="text-section-title font-bold flex items-center gap-2 mb-4">
+              <FiUsers className="text-accent" />
+              Roster
+              <span className="text-xs bg-accent/10 px-2 py-0.5 rounded-full text-accent font-black">{members.length}</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {members.map((member, i) => {
+                const isMemberChief = clan.chief?._id === member._id;
+                return (
                   <motion.div
-                    initial={{ opacity: 0, y: -10 }}
+                    key={member._id}
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start gap-3 p-4 rounded-xl bg-accent/10 border border-accent/30 group/notice relative overflow-hidden"
+                    transition={{ delay: i * 0.04 }}
+                    className="flex items-center justify-between p-4 rounded-xl border border-glass-border/40 hover:border-accent/30 transition-all group"
                   >
-                    <div className="absolute top-0 right-0 px-2 py-0.5 bg-accent text-[8px] font-black text-white rounded-bl-lg uppercase tracking-tighter">
-                      Global Notice
-                    </div>
-                    <FiAward className="text-accent mt-0.5 shrink-0" size={16} />
-                    <div>
-                      <p className="text-sm font-bold text-primary leading-relaxed">{globalNotice.content}</p>
-                      <p className="text-[9px] text-secondary mt-1 uppercase tracking-widest font-semibold">
-                        Posted by Admin • {new Date(globalNotice.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {notices.map((notice, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.08 }}
-                    className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.03] border border-glass-border/40 group/notice"
-                  >
-                    <FiStar className="text-yellow-400 mt-0.5 shrink-0" size={14} />
-                    <p className="text-sm text-primary/90 leading-relaxed flex-1">{notice}</p>
-                  </motion.div>
-                ))}
-                {notices.length === 0 && (
-                  <div className="text-center py-10 opacity-30 italic text-xs">
-                    No notices yet.
-                  </div>
-                )}
-              </div>
-            </BaseCard>
-          </div>
-        )}
-
-        {activeTab === 'roster' && (
-          <div className="h-full">
-            <BaseCard variant='solid'className="h-full" hover={false}>
-              <h3 className="text-section-title font-bold flex items-center gap-2 mb-4">
-                <FiUsers className="text-accent" />
-                Roster
-                <span className="text-xs bg-accent/10 px-2 py-0.5 rounded-full text-accent font-black">{members.length}</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {members.map((member, i) => {
-                  const isMemberChief = clan.chief?._id === member._id;
-                  return (
-                    <motion.div
-                      key={member._id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="flex items-center justify-between p-4 rounded-xl border border-glass-border/40 hover:border-accent/30 transition-all group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-glass-surface flex items-center justify-center font-bold text-accent">
-                          {member.username[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-primary flex items-center gap-2">
-                            <MemberHoverCard userId={member._id} username={member.username}>
-                              {member.username}
-                            </MemberHoverCard>
-                            {member._id === userId && (
-                              <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black">YOU</span>
-                            )}
-                          </p>
-                          {isMemberChief && (
-                            <p className="text-[10px] text-yellow-400 font-bold flex items-center gap-1">
-                              <FiShield size={10} /> Clan Chief
-                            </p>
-                          )}
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-glass-surface flex items-center justify-center font-bold text-accent">
+                        {(member.username?.[0] || member.email?.[0] || 'U').toUpperCase()}
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isMemberChief ? (
-                          <span className="text-[10px] bg-yellow-500/15 text-yellow-400 px-2 py-1 rounded-lg font-bold">
-                            CHIEF
-                          </span>
-                        ) : (
-                          <>
-                            <span className="text-[10px] bg-glass-surface text-secondary px-2 py-1 rounded-lg font-medium">
-                              Member
-                            </span>
-                          </>
+                      <div>
+                        <p className="font-bold text-primary flex items-center gap-2">
+                          <MemberHoverCard userId={member._id} username={member.username}>
+                            {member.username || member.email || 'Onboarding Pending'}
+                          </MemberHoverCard>
+                          {member._id === userId && (
+                            <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black">YOU</span>
+                          )}
+                        </p>
+                        {isMemberChief && (
+                          <p className="text-[10px] text-yellow-400 font-bold flex items-center gap-1">
+                            <FiShield size={10} /> Clan Chief
+                          </p>
                         )}
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </BaseCard>
-          </div>
-        )}
-
-
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isMemberChief ? (
+                        <span className="text-[10px] bg-yellow-500/15 text-yellow-400 px-2 py-1 rounded-lg font-bold">
+                          CHIEF
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-[10px] bg-glass-surface text-secondary px-2 py-1 rounded-lg font-medium">
+                            Member
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </BaseCard>
+        </div>
       </div>
     </div>
   );
@@ -384,18 +314,7 @@ const Clans = () => {
 
   const myClan = myClanQuery.data;
 
-  // Fetch global notice
-  const globalNoticeQuery = useQuery({
-    queryKey: ['global-notice'],
-    queryFn: async () => {
-      try {
-        const res = await api.get('/api/notices');
-        return res.data.data || null;
-      } catch {
-        return null;
-      }
-    },
-  });
+  // Notices removed upstream
 
   const handleApply = async (clanId) => {
     try {
@@ -509,7 +428,6 @@ const Clans = () => {
               clan={myClan}
               userId={user?.id}
               onLeave={() => setShowLeaveConfirm(true)}
-              globalNotice={globalNoticeQuery.data}
             />
           </MotionDiv>
         ) : (

@@ -104,8 +104,112 @@ const createQuestionSet = async (req, res, next) => {
   }
 };
 
+const buildChallengePayload = (q, setId) => ({
+  title: q.title,
+  description: q.description || q.title || 'No description provided',
+  difficulty: q.difficulty || 'Easy',
+  points: q.points || 100,
+  category: q.category || 'Logic',
+  tags: q.tags || [],
+  codeSnippets: q.codeSnippets || [],
+  functionName: q.functionName || '',
+  testCases: q.testCases || [],
+  questionSetId: setId,
+});
+
+const updateQuestionSet = async (req, res, next) => {
+  try {
+    const set = await QuestionSet.findById(req.params.id);
+    if (!set) {
+      res.status(404);
+      throw new Error('Question Set not found');
+    }
+
+    if (req.body.title) {
+      req.body.title = capitalizeTitle(req.body.title);
+    }
+    if (Array.isArray(req.body.questions)) {
+      req.body.questions = req.body.questions.map((q) =>
+        q.title ? { ...q, title: capitalizeTitle(q.title) } : q
+      );
+    }
+
+    const fields = ['title', 'weekNumber', 'deadline', 'targetLevel', 'questions', 'status'];
+    fields.forEach((f) => {
+      if (req.body[f] !== undefined) set[f] = req.body[f];
+    });
+    await set.save();
+
+    // Reconcile the standalone Challenge docs that mirror these questions so
+    // Missions/Dashboard stay in sync. Match by title to preserve _ids (and
+    // therefore existing submission references) for unchanged questions.
+    if (Array.isArray(req.body.questions)) {
+      const existing = await Challenge.find({ questionSetId: set._id });
+      const byTitle = new Map(existing.map((c) => [c.title.toLowerCase(), c]));
+      const keepTitles = new Set();
+
+      for (const q of req.body.questions) {
+        if (!q.title) continue;
+        keepTitles.add(q.title.toLowerCase());
+        const payload = buildChallengePayload(q, set._id);
+        const match = byTitle.get(q.title.toLowerCase());
+        if (match) {
+          Object.assign(match, payload);
+          await match.save();
+        } else {
+          await Challenge.create(payload);
+        }
+      }
+
+      const toRemove = existing.filter((c) => !keepTitles.has(c.title.toLowerCase()));
+      if (toRemove.length > 0) {
+        await Challenge.deleteMany({ _id: { $in: toRemove.map((c) => c._id) } });
+      }
+    }
+
+    await logAudit({
+      action: 'questionset.update',
+      actorId: req.user.id,
+      targetType: 'questionset',
+      targetId: set._id,
+      metadata: { title: set.title, weekNumber: set.weekNumber },
+    });
+
+    return sendSuccess(res, { data: set, message: 'Question Set updated successfully' });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const deleteQuestionSet = async (req, res, next) => {
+  try {
+    const set = await QuestionSet.findById(req.params.id);
+    if (!set) {
+      res.status(404);
+      throw new Error('Question Set not found');
+    }
+
+    await Challenge.deleteMany({ questionSetId: set._id });
+    await set.deleteOne();
+
+    await logAudit({
+      action: 'questionset.delete',
+      actorId: req.user.id,
+      targetType: 'questionset',
+      targetId: set._id,
+      metadata: { title: set.title, weekNumber: set.weekNumber },
+    });
+
+    return sendSuccess(res, { message: 'Question Set deleted successfully' });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   getQuestionSets,
   getQuestionSetById,
-  createQuestionSet
+  createQuestionSet,
+  updateQuestionSet,
+  deleteQuestionSet
 };

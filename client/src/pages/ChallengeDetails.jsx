@@ -21,6 +21,8 @@ import {
   FiMessageSquare,
   FiUser,
   FiPlay,
+  FiChevronDown,
+  FiChevronUp,
 } from "react-icons/fi";
 
 // Monaco & Shared Assets
@@ -109,7 +111,7 @@ const ChallengeDetails = () => {
 
   const [repoUrl, setRepoUrl] = useState("");
   const [codeByLang, setCodeByLang] = useState({});
-  const [language, setLanguage] = useState("javascript");
+  const [language, setLanguage] = useState(user?.preferredLanguage || "javascript");
   const [submitting, setSubmitting] = useState(false);
   const [leftTab, setLeftTab] = useState("description");
   const [rightTab, setRightTab] = useState("code"); // 'code', 'ai', 'tests'
@@ -808,7 +810,7 @@ const ChallengeDetails = () => {
                   ].map(({ key, label }) => (
                     <button
                       key={key}
-                      onClick={() => setBottomTab(key)}
+                      onClick={() => { setBottomTab(key); setBottomCollapsed(false); }}
                       className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
                         bottomTab === key
                           ? "bg-accent/15 text-accent"
@@ -819,21 +821,31 @@ const ChallengeDetails = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  onClick={handleRun}
-                  disabled={running}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-green-500/15 text-green-400 text-xs font-bold hover:bg-green-500/25 transition-all disabled:opacity-60 border border-green-500/20"
-                >
-                  {running ? (
-                    <FiRefreshCw size={11} className="animate-spin" />
-                  ) : (
-                    <FiPlay size={11} />
-                  )}
-                  {running ? "Running…" : "Run"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setBottomCollapsed((c) => !c)}
+                    className="flex items-center justify-center w-7 h-7 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors"
+                    title={bottomCollapsed ? "Expand panel" : "Collapse panel"}
+                  >
+                    {bottomCollapsed ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+                  </button>
+                  <button
+                    onClick={handleRun}
+                    disabled={running}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-green-500/15 text-green-400 text-xs font-bold hover:bg-green-500/25 transition-all disabled:opacity-60 border border-green-500/20"
+                  >
+                    {running ? (
+                      <FiRefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      <FiPlay size={11} />
+                    )}
+                    {running ? "Running…" : "Run"}
+                  </button>
+                </div>
               </div>
 
               {/* Panel body */}
+              {!bottomCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
                 {bottomTab === "input" ? (
                   /* ── Test tab ── */
@@ -1007,6 +1019,7 @@ const ChallengeDetails = () => {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

@@ -1,11 +1,10 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
-import AdminRoute from './components/AdminRoute';
 import ClanChiefRoute from './components/ClanChiefRoute';
 import LoadingScreen from './components/LoadingScreen';
 import ThemeToggle from './components/ThemeToggle';
@@ -14,14 +13,13 @@ import { useAuth } from './context/useAuth';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
+const ClaimUsername = lazy(() => import('./pages/ClaimUsername'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ChallengeDetails = lazy(() => import('./pages/ChallengeDetails'));
 const SubmissionDetails = lazy(() => import('./pages/SubmissionDetails'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Clans = lazy(() => import('./pages/Clans'));
 const Profile = lazy(() => import('./pages/Profile'));
-const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const ClanChiefPanel = lazy(() => import('./pages/ClanChiefPanel'));
 const Missions = lazy(() => import('./pages/Missions'));
 const PendingTasks = lazy(() => import('./pages/PendingTasks'));
@@ -50,7 +48,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Navigate to="/login" replace />} />
 
           <Route
             element={
@@ -59,6 +57,7 @@ function App() {
               </ProtectedRoute>
             }
           >
+            <Route path="/claim-username" element={<ClaimUsername />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/clans" element={<Clans />} />
@@ -69,14 +68,7 @@ function App() {
             <Route path="/missions" element={<Missions />} />
             <Route path="/pending-tasks" element={<PendingTasks />} />
             <Route path="/settings" element={<Settings />} />
-            <Route
-              path="/admin"
-              element={
-                <AdminRoute>
-                  <AdminPanel />
-                </AdminRoute>
-              }
-            />
+
             <Route path="/chief-panel" element={<ClanChiefRoute><ClanChiefPanel /></ClanChiefRoute>} />
             
             {/* New Features */}

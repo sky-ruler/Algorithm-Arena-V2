@@ -33,6 +33,7 @@ const Settings = () => {
     linkedin: '',
     website: '',
     profilePicture: '',
+    preferredLanguage: 'javascript',
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,9 +51,10 @@ const Settings = () => {
         linkedin: user.linkedin || '',
         website: user.website || '',
         profilePicture: user.profilePicture || '',
+        preferredLanguage: user.preferredLanguage || 'javascript',
       });
     }
-  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture]);
+  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture, user?.preferredLanguage]);
 
   /**
    * Extract just the username when a user pastes a full profile URL.
@@ -163,12 +165,28 @@ const Settings = () => {
 
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Branch / Course</label>
-                <input name="branch" className="field-input" placeholder="e.g. B.Tech CSE" value={formData.branch} onChange={handleChange} />
+                <select name="branch" className="field-select" value={formData.branch} onChange={handleChange}>
+                  <option value="">Select Branch</option>
+                  <option value="B.Tech CSE">B.Tech CSE</option>
+                  <option value="B.Tech ECE">B.Tech ECE</option>
+                  <option value="B.Tech EEE">B.Tech EEE</option>
+                  <option value="MCA">MCA</option>
+                </select>
               </div>
 
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiGrid className="text-accent" size={14} /> Section / Group</label>
-                <input name="section" className="field-input" placeholder="e.g. Section A" value={formData.section} onChange={handleChange} />
+                <input
+                  name="section"
+                  className="field-input font-mono"
+                  placeholder="e.g. 24E1B3"
+                  value={formData.section}
+                  onChange={(e) => {
+                    const val = e.target.value.trim().toUpperCase();
+                    setFormData(prev => ({ ...prev, section: val }));
+                  }}
+                  maxLength={20}
+                />
               </div>
 
               <div className="space-y-2">
@@ -179,13 +197,24 @@ const Settings = () => {
                   <option value="Second Year">Second Year</option>
                   <option value="Third Year">Third Year</option>
                   <option value="Fourth Year">Fourth Year</option>
-                  <option value="Graduate">Graduate</option>
                 </select>
               </div>
 
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiMapPin className="text-accent" size={14} /> Location</label>
                 <input name="location" className="field-input" placeholder="e.g. Bhubaneswar, India" value={formData.location} onChange={handleChange} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Preferred Code Language</label>
+                <select name="preferredLanguage" className="field-select" value={formData.preferredLanguage} onChange={handleChange}>
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                  <option value="java">Java</option>
+                  <option value="cpp">C++</option>
+                  <option value="c">C</option>
+                </select>
+                <p className="text-[10px] text-tertiary">Default language pre-selected in the code editor</p>
               </div>
             </div>
           </Card>

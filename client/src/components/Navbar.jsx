@@ -35,9 +35,7 @@ const Navbar = ({ onLogout }) => {
     { name: "Archives", path: "/resources", icon: FiFolder },
   ];
 
-  if (role === 'admin') {
-    navItems.push({ name: 'Admin', path: '/admin', icon: FiShield });
-  }
+
 
   if (role === 'clan-chief' || user?.isChief) {
     navItems.push({ name: 'Clan Chief', path: '/chief-panel', icon: FiShield });
