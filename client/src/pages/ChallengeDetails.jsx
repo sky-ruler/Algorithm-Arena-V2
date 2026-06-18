@@ -122,6 +122,7 @@ const ChallengeDetails = () => {
   const [selectedCaseIdx, setSelectedCaseIdx] = useState(0);
   const [runOutput, setRunOutput] = useState(null);
   const [running, setRunning] = useState(false);
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
 
   // Review mode state
   const [reviewComment, setReviewComment] = useState("");
