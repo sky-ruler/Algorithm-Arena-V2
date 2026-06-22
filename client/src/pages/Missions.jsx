@@ -256,6 +256,12 @@ const Missions = () => {
     }));
   };
 
+  const handleChallengeClick = (e, challengeId) => {
+    if (subsMap[challengeId] === 'Accepted') {
+      window.alert("No extra exp will be rewarded in solving this problem");
+    }
+  };
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -448,7 +454,7 @@ const Missions = () => {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.03 }}
                       >
-                        <Link to={`/challenge/${challenge._id}`} className="group block h-full">
+                        <Link to={`/challenge/${challenge._id}`} className="group block h-full" onClick={(e) => handleChallengeClick(e, challenge._id)}>
                           <ChallengeCard
                             className="h-full p-6 !rounded-2xl"
                             innerClassName="flex flex-col gap-3 h-full justify-between w-full"
@@ -501,9 +507,9 @@ const Missions = () => {
                         key={challenge._id}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.03 }}
+                        transition={{ delay: index * 0.02 }}
                       >
-                        <Link to={`/challenge/${challenge._id}`} className="group block">
+                        <Link to={`/challenge/${challenge._id}`} className="group block" onClick={(e) => handleChallengeClick(e, challenge._id)}>
                           <ChallengeCard
                             className="p-4 sm:p-6 !rounded-2xl"
                             innerClassName="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full h-full"
