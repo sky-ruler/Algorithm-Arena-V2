@@ -187,18 +187,26 @@ const getLeaderboard = async (req, res, next) => {
     // $facet returns total count + the current page in a single round-trip.
     const [result] = await Submission.aggregate([
       { $match: match },
+      // 1. Group by userId and challengeId to count each challenge only once per user
+      {
+        $group: {
+          _id: { userId: '$userId', challengeId: '$challengeId' }
+        }
+      },
+      // 2. Lookup the challenge details
       {
         $lookup: {
           from: 'challenges',
-          localField: 'challengeId',
+          localField: '_id.challengeId',
           foreignField: '_id',
           as: 'challenge',
         },
       },
       { $unwind: '$challenge' },
+      // 3. Group by userId to sum up total distinct points and solved count
       {
         $group: {
-          _id: '$userId',
+          _id: '$_id.userId',
           solvedCount: { $sum: 1 },
           totalPoints: { $sum: '$challenge.points' },
         },
