@@ -451,6 +451,18 @@ const ChallengeDetails = () => {
   const handleSubmit = async () => {
     if (!repoUrl && !codeSnippet.trim())
       return toast.error("Please provide code or a GitHub link.");
+
+    if (historyQuery.data?.some(sub => sub.status === 'Accepted')) {
+      toast("You have solved it once. No bonus exp will be rewarded in further submissions", {
+        icon: '⚠️',
+        style: {
+          borderRadius: '10px',
+          background: '#333',
+          color: '#fff',
+        },
+      });
+    }
+
     setSubmitting(true);
     try {
       await api.post("/api/submissions", {
@@ -600,9 +612,9 @@ const ChallengeDetails = () => {
             {leftTab === "description" ? (
               <div className="flex flex-col gap-4">
                 {historyQuery.data?.some(sub => sub.status === 'Accepted') && (
-                  <div className="px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm flex items-start gap-3 font-semibold">
+                  <div className="px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm flex items-start gap-3 font-semibold">
                     <FiCheck className="mt-0.5 shrink-0" />
-                    <p>You have already solved it once. You will not get anymore exp by completing it again.</p>
+                    <p>You have solved it once. No bonus exp will be rewarded in further submissions</p>
                   </div>
                 )}
                 <div
