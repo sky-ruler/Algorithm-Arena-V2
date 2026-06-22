@@ -334,7 +334,7 @@ const Missions = () => {
         const dB = DIFF_ORDER[b.difficulty] || 4;
         if (dA !== dB) return dA - dB;
       } else if (filters.sortBy === 'points') {
-        if ((a.points || 0) !== (b.points || 0)) return (a.points || 0) - (b.points || 0);
+        if ((a.points || 0) !== (b.points || 0)) return (b.points || 0) - (a.points || 0);
       } else if (filters.sortBy === 'title') {
         const cmp = (a.title || '').localeCompare(b.title || '');
         if (cmp !== 0) return cmp;

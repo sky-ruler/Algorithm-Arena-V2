@@ -169,13 +169,13 @@ const Login = ({ onLoginSuccess }) => {
       </div>
 
       {/* Footer */}
-      <p className="text-sm text-secondary">
-        Copyright 2026 Algorithm Arena. Built for{" "}
-        <span className="text-primary font-semibold">
-          GDG On Campus - SOA ITER
-        </span>
-        .
-      </p>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 relative z-10">
+        <Logo variant="gdg" size="w-10 h-10" imgClassName="opacity-100" />
+        <p className="text-xs text-secondary tracking-wide text-center">
+          © 2026 Algorithm Arena ·{" "}
+          <span className="text-primary font-bold">GDG On Campus – SOA ITER</span>
+        </p>
+      </div>
     </div>
   );
 };
