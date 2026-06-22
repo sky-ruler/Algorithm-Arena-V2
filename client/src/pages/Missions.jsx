@@ -414,7 +414,7 @@ const Missions = () => {
           value={filters.sortBy}
           onChange={(e) => handleFilterChange("sortBy", e.target.value)}
         >
-          <option value="createdAt">Date (Newest)</option>
+          <option value="createdAt">Recommended</option>
           <option value="points">XP Points</option>
           <option value="difficulty">Difficulty</option>
           <option value="title">Title</option>

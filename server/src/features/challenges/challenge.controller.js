@@ -54,7 +54,48 @@ const getChallenges = async (req, res, next) => {
     let total;
     let challenges;
 
-    if (sortBy === 'difficulty') {
+    if (sortBy === 'createdAt') {
+      const countPromise = Challenge.countDocuments(filter);
+      const aggPromise = Challenge.aggregate([
+        { $match: filter },
+        {
+          $lookup: {
+            from: 'questionsets',
+            localField: 'questionSetId',
+            foreignField: '_id',
+            as: 'questionSetId'
+          }
+        },
+        {
+          $unwind: {
+            path: '$questionSetId',
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            difficultyOrder: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$difficulty', 'Easy'] }, then: 1 },
+                  { case: { $eq: ['$difficulty', 'Medium'] }, then: 2 },
+                  { case: { $eq: ['$difficulty', 'Hard'] }, then: 3 }
+                ],
+                default: 4
+              }
+            },
+            deadlineSort: { $ifNull: ['$questionSetId.deadline', new Date('9999-12-31')] }
+          }
+        },
+        { $sort: { deadlineSort: 1, difficultyOrder: 1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: Number(limit) }
+      ]);
+
+      const [totalCount, aggResults] = await Promise.all([countPromise, aggPromise]);
+      total = totalCount;
+      challenges = aggResults;
+    } else if (sortBy === 'difficulty') {
       const countPromise = Challenge.countDocuments(filter);
       const aggPromise = Challenge.aggregate([
         { $match: filter },
