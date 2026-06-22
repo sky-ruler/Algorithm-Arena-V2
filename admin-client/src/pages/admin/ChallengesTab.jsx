@@ -1183,8 +1183,9 @@ const ChallengesTab = () => {
       {/* ── Delete Confirm ─────────────────────────────────────────────── */}
       {deleteTarget && (
         <ConfirmDialog
+          open={true}
           title="Delete Challenge"
-          message={`Are you sure you want to delete "${deleteTarget.title}"?`}
+          description={`Are you sure you want to delete "${deleteTarget.title}"?`}
           onConfirm={onDeleteChallenge}
           onCancel={() => setDeleteTarget(null)}
         />

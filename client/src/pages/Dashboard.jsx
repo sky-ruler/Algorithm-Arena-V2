@@ -25,6 +25,56 @@ import ChallengeCard from "../components/Card";
 import { getSessionGreeting } from "../constants/greetings";
 
 /* ── helpers ─────────────────────────────────── */
+const getLocalDrafts = () => {
+  const drafts = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("challenge-draft:")) {
+        const challengeId = key.split(":")[1];
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          const hasCode = draft.codeByLang && Object.values(draft.codeByLang).some(c => c && c.trim());
+          if (draft.repoUrl?.trim() || hasCode) {
+            drafts.push({
+              _id: `draft-${challengeId}`,
+              challengeId: {
+                _id: challengeId,
+                title: draft.challengeTitle || "Unknown Challenge",
+                difficulty: draft.challengeDifficulty || "Easy",
+                points: draft.challengePoints || 0,
+              },
+              status: "Attempted",
+              submittedAt: draft.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading drafts from localStorage", e);
+  }
+  return drafts;
+};
+
+const getCardBadge = (chId, subsMap, drafts) => {
+  if (subsMap[chId] === "Accepted") {
+    return { label: "Solved", cls: "bg-green-500/10 text-green-400 border-green-500/20" };
+  }
+  const hasDraft = drafts.some((d) => d.challengeId?._id === chId);
+  if (hasDraft) {
+    return { label: "Attempted", cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
+  }
+  if (subsMap[chId] === "Rejected") {
+    return { label: "Rejected", cls: "bg-red-500/10 text-red-400 border-red-500/20" };
+  }
+  if (subsMap[chId] === "Pending") {
+    return { label: "Pending Review", cls: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" };
+  }
+  return null;
+};
+
 const getRGB = (d) =>
   d === "Easy"
     ? "34,197,94"
@@ -131,14 +181,86 @@ const Dashboard = () => {
     },
   });
 
+  const mySubmissionsQ = useQuery({
+    queryKey: ["my-submissions"],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/submissions/my-submissions");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   /* ── derived ─────────────────────────────── */
   const summary = summaryQ.data;
   const profile = profileQ.data;
-  const challenges = challengesQ.data || [];
-  const allSubs = useMemo(
-    () => profile?.recentSubmissions || summary?.recentActivity || [],
-    [profile, summary],
-  );
+  const challenges = challengesQ.data;
+
+  const subsMap = useMemo(() => {
+    const map = {};
+    (mySubmissionsQ.data || []).forEach((sub) => {
+      const cid = sub.challengeId?._id || sub.challengeId;
+      if (!cid) return;
+      if (!map[cid] || sub.status === "Accepted") {
+        map[cid] = sub.status;
+      }
+    });
+    return map;
+  }, [mySubmissionsQ.data]);
+
+  const availableChallenges = useMemo(() => {
+    return (challenges || []).filter((ch) => subsMap[ch._id] !== "Accepted");
+  }, [challenges, subsMap]);
+
+  const drafts = useMemo(() => getLocalDrafts(), []);
+
+  const combinedSubs = useMemo(() => {
+    const dbSubs = mySubmissionsQ.data || [];
+    const uniqueMap = new Map();
+
+    dbSubs.forEach((sub) => {
+      const cid = sub.challengeId?._id || sub.challengeId;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (
+        !existing ||
+        sub.status === "Accepted" ||
+        new Date(sub.submittedAt) > new Date(existing.submittedAt)
+      ) {
+        uniqueMap.set(cid, sub);
+      }
+    });
+
+    drafts.forEach((draft) => {
+      const cid = draft.challengeId?._id;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (!existing || existing.status !== "Accepted") {
+        uniqueMap.set(cid, draft);
+      }
+    });
+
+    const list = Array.from(uniqueMap.values());
+    const statusWeight = {
+      "Attempted": 1,
+      "Rejected": 2,
+      "Pending": 3,
+      "Accepted": 4
+    };
+
+    return list.sort((a, b) => {
+      const weightA = statusWeight[a.status] || 3;
+      const weightB = statusWeight[b.status] || 3;
+      if (weightA !== weightB) {
+        return weightA - weightB;
+      }
+      return new Date(b.submittedAt) - new Date(a.submittedAt);
+    });
+  }, [mySubmissionsQ.data, drafts]);
+
+  const recentSubs = useMemo(() => combinedSubs.slice(0, 6), [combinedSubs]);
 
   const solved = summary?.solved ?? profile?.acceptedCount ?? 0;
   const total = summary?.totalChallenges ?? 0;
@@ -160,13 +282,7 @@ const Dashboard = () => {
     setHeroIdx((i) => Math.max(0, Math.min(activeSets.length - 1, i + dir)));
   };
 
-  const recentSubs = useMemo(
-    () =>
-      [...allSubs]
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
-        .slice(0, 6),
-    [allSubs],
-  );
+
 
   const diffChips = [
     { v: "", l: "All" },
@@ -516,20 +632,21 @@ const Dashboard = () => {
                 <SkeletonCard key={i} />
               ))}
             </div>
-          ) : challenges.length === 0 ? (
+          ) : availableChallenges.length === 0 ? (
             <EmptyState
               title="No missions found"
               description="Adjust filters or check back later."
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {challenges.map((ch, i) => {
+              {availableChallenges.map((ch, i) => {
                 const diffCls =
                   ch.difficulty === "Easy"
                     ? "bg-green-500/15 text-green-400 border-green-500/25"
                     : ch.difficulty === "Medium"
                       ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/25"
                       : "bg-red-500/15 text-red-400 border-red-500/25";
+                const badge = getCardBadge(ch._id, subsMap, drafts);
                 return (
                   <motion.div
                     key={ch._id}
@@ -547,11 +664,20 @@ const Dashboard = () => {
                         difficultyColor={getRGB(ch.difficulty)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span
-                            className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${diffCls}`}
-                          >
-                            {ch.difficulty}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${diffCls}`}
+                            >
+                              {ch.difficulty}
+                            </span>
+                            {badge && (
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${badge.cls}`}
+                              >
+                                {badge.label}
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] font-black text-accent">
                             {ch.points} XP
                           </span>
@@ -629,20 +755,25 @@ const Dashboard = () => {
                 {recentSubs.map((sub, i) => {
                   const ac = sub.status === "Accepted";
                   const wa = sub.status === "Rejected";
+                  const att = sub.status === "Attempted";
                   const badgeCls = ac
                     ? "bg-green-500/15 text-green-400 border-green-500/25"
                     : wa
                       ? "bg-red-500/15 text-red-400 border-red-500/25"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/25";
+                      : att
+                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
+                        : "bg-yellow-500/15 text-yellow-400 border-yellow-500/25";
                   const badgeLabel = ac
-                    ? "ACCEPTED"
+                    ? "SOLVED"
                     : wa
                       ? "REJECTED"
-                      : "PENDING";
+                      : att
+                        ? "ATTEMPTED"
+                        : "PENDING REVIEW";
                   return (
                     <Link
                       key={sub._id + i}
-                      to={`/submission/${sub._id}`}
+                      to={att ? `/challenge/${sub.challengeId?._id}` : `/submission/${sub._id}`}
                       className="group flex items-center justify-between px-4 py-3.5 hover:bg-white/[0.03] transition-all"
                     >
                       <div className="min-w-0 flex-1">
