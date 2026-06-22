@@ -89,9 +89,13 @@ const Missions = () => {
   const subsMap = useMemo(() => {
     const map = {};
     (submissionsQuery.data || []).forEach(sub => {
+      const challengeIdStr = typeof sub.challengeId === 'object' && sub.challengeId !== null
+        ? sub.challengeId._id
+        : sub.challengeId;
+      if (!challengeIdStr) return;
       // Prioritize Accepted over Pending if multiple
-      if (!map[sub.challengeId?._id] || sub.status === 'Accepted') {
-        map[sub.challengeId?._id] = { status: sub.status, subId: sub._id };
+      if (!map[challengeIdStr] || sub.status === 'Accepted') {
+        map[challengeIdStr] = { status: sub.status, subId: sub._id };
       }
     });
     return map;
