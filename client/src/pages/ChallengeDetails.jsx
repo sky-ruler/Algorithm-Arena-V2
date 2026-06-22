@@ -146,10 +146,6 @@ const ChallengeDetails = () => {
   const containerRef = useRef(null);
   const [isMaximized, setIsMaximized] = useState(false);
 
-  // Solved Modal state
-  const [showSolvedModal, setShowSolvedModal] = useState(false);
-  const [modalDismissed, setModalDismissed] = useState(false);
-
   // Bottom (test/result) panel sizing — lets the editor grow when the
   // test-case panel takes up too much vertical space.
   const [bottomHeight, setBottomHeight] = useState(224); // matches old h-56
@@ -286,16 +282,6 @@ const ChallengeDetails = () => {
       setLanguage(sub.language || "javascript");
     }
   }, [isReviewMode, reviewQuery.data]);
-
-  // Trigger Solved Modal if already accepted
-  useEffect(() => {
-    if (historyQuery.isSuccess && !modalDismissed && !isReviewMode) {
-      const hasAccepted = historyQuery.data?.some(sub => sub.status === 'Accepted');
-      if (hasAccepted) {
-        setShowSolvedModal(true);
-      }
-    }
-  }, [historyQuery.isSuccess, historyQuery.data, modalDismissed, isReviewMode]);
 
   const handleGrade = async (status) => {
     setGrading(true);
@@ -465,18 +451,6 @@ const ChallengeDetails = () => {
   const handleSubmit = async () => {
     if (!repoUrl && !codeSnippet.trim())
       return toast.error("Please provide code or a GitHub link.");
-
-    if (historyQuery.data?.some(sub => sub.status === 'Accepted')) {
-      toast("You have solved it once. No bonus exp will be rewarded in further submissions", {
-        icon: '⚠️',
-        style: {
-          borderRadius: '10px',
-          background: '#333',
-          color: '#fff',
-        },
-      });
-    }
-
     setSubmitting(true);
     try {
       await api.post("/api/submissions", {
@@ -626,9 +600,9 @@ const ChallengeDetails = () => {
             {leftTab === "description" ? (
               <div className="flex flex-col gap-4">
                 {historyQuery.data?.some(sub => sub.status === 'Accepted') && (
-                  <div className="px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm flex items-start gap-3 font-semibold">
+                  <div className="px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm flex items-start gap-3 font-semibold">
                     <FiCheck className="mt-0.5 shrink-0" />
-                    <p>You have solved it once. No bonus exp will be rewarded in further submissions</p>
+                    <p>You have already solved it once. You will not get anymore exp by completing it again.</p>
                   </div>
                 )}
                 <div
@@ -1142,31 +1116,6 @@ const ChallengeDetails = () => {
           ) : null}
         </div>
       </div>
-
-      {/* Solved Modal */}
-      {showSolvedModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-200">
-            <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mb-4 text-yellow-500">
-              <FiCheck size={24} />
-            </div>
-            <h2 className="text-lg font-bold text-white mb-2">Notice</h2>
-            <p className="text-secondary text-sm mb-6">
-              No extra exp will be rewarded in solving this problem
-            </p>
-            <button
-              className="w-full py-2.5 rounded-lg font-semibold bg-accent text-white hover:opacity-90 transition-opacity"
-              onClick={() => {
-                setShowSolvedModal(false);
-                setModalDismissed(true);
-              }}
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };
