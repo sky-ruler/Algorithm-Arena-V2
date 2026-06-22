@@ -243,6 +243,8 @@ const Missions = () => {
 
   // Apply the Solved / Pending Review status filter client-side. The challenges
   // API has no per-user status, so we match against the user's own submissions.
+  // By default (All), hide solved challenges so users can focus on unsolved ones.
+  // When status === 'Accepted', show only the solved ones.
   const statusFilteredChallenges = useMemo(() => {
     if (filters.status === 'Accepted') {
       return challenges.filter((ch) => subsMap[ch._id]?.status === 'Accepted');
@@ -250,7 +252,8 @@ const Missions = () => {
     if (filters.status === 'Pending') {
       return challenges.filter((ch) => subsMap[ch._id]?.status === 'Pending');
     }
-    return challenges;
+    // 'All' status: Hide solved (Accepted) challenges so they don't clutter the dashboard
+    return challenges.filter((ch) => subsMap[ch._id]?.status !== 'Accepted');
   }, [challenges, filters.status, subsMap]);
 
   const groupedChallenges = useMemo(() => {
