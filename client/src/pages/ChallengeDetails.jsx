@@ -448,9 +448,10 @@ const ChallengeDetails = () => {
       setRepoUrl("");
       setCodeByLang({});
       localStorage.removeItem(draftKey);
-      queryClient.invalidateQueries({ queryKey: ["my-submissions", id] });
-      queryClient.invalidateQueries({ queryKey: ["dash-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["dash-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["my-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["full-profile-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["full-profile-stats"] });
     } catch (err) {
       toast.error(err.userMessage || "Submission failed.");
     } finally {
