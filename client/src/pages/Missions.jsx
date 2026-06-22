@@ -66,10 +66,23 @@ const Missions = () => {
 
   const activeSet = activeSetQuery.data;
 
-  const clearSetFilter = () => {
-    navigate('/missions', { replace: true });
-    setFilters(prev => ({ ...prev, setId: '' }));
-  };
+  const [filters, setFilters] = useState({
+    page: 1,
+    limit: 50, // Increase limit when grouping to show all related items
+    search: "",
+    difficulty: "",
+    category: "",
+    status: "All", // 'All', 'Accepted', 'Pending'
+    setId: searchParams.get('setId') || '',
+    sortBy: "createdAt",
+    sortDir: "desc",
+    grouping: "none", // 'none', 'weekly', 'monthly'
+  });
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem("missions:view") || "grid",
+  );
+
+  const queryKey = useMemo(() => ["challenges", filters], [filters]);
 
   const submissionsQuery = useQuery({
     queryKey: ['my-submissions'],
@@ -84,34 +97,36 @@ const Missions = () => {
   const subsMap = useMemo(() => {
     const map = {};
     (submissionsQuery.data || []).forEach(sub => {
+      const challengeIdStr = typeof sub.challengeId === 'object' && sub.challengeId !== null
+        ? sub.challengeId._id
+        : sub.challengeId;
+      if (!challengeIdStr) return;
       // Prioritize Accepted over Pending if multiple
-      if (!map[sub.challengeId?._id] || sub.status === 'Accepted') {
-        map[sub.challengeId?._id] = sub.status;
+      if (!map[challengeIdStr] || sub.status === 'Accepted') {
+        map[challengeIdStr] = { status: sub.status, subId: sub._id };
       }
     });
     return map;
   }, [submissionsQuery.data]);
-  const [filters, setFilters] = useState({
-    page: 1,
-    limit: 50, // Increase limit when grouping to show all related items
-    search: "",
-    difficulty: "",
-    category: "",
-    status: "All", // 'All', 'Accepted', 'Pending'
-    setId: initialSetId,
-    sortBy: "createdAt",
-    sortDir: "desc",
-    grouping: "none", // 'none', 'weekly', 'monthly'
-  });
-  const [viewMode, setViewMode] = useState(
-    () => localStorage.getItem("missions:view") || "grid",
-  );
+
+  const clearSetFilter = () => {
+    navigate('/missions', { replace: true });
+    setFilters(prev => ({ ...prev, setId: '' }));
+  };
+
+  // Synced with searchParams using react-router-dom state instead of synchronous effect where possible,
+  // or simple location-based dependency.
+  useEffect(() => {
+    const currentSetId = searchParams.get('setId') || '';
+    if (filters.setId !== currentSetId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters(prev => ({ ...prev, setId: currentSetId, page: 1 }));
+    }
+  }, [searchParams, filters.setId]);
 
   useEffect(() => {
     localStorage.setItem("missions:view", viewMode);
   }, [viewMode]);
-
-  const queryKey = useMemo(() => ["challenges", filters], [filters]);
 
   const challengesQuery = useQuery({
     queryKey,
@@ -160,7 +175,40 @@ const Missions = () => {
       return [];
     }
 
-    return apiData;
+    // Deduplication logic for "All Missions"
+    const byTitle = {};
+    const now = new Date();
+    
+    apiData.forEach(ch => {
+      const title = ch.title.toLowerCase();
+      if (!byTitle[title]) {
+        byTitle[title] = [];
+      }
+      byTitle[title].push(ch);
+    });
+
+    const deduped = Object.values(byTitle).map(group => {
+      if (group.length === 1) return group[0];
+      
+      // Filter those with a future deadline
+      const upcoming = group.filter(c => c.questionSetId && c.questionSetId.deadline && new Date(c.questionSetId.deadline) > now);
+      
+      if (upcoming.length > 0) {
+        // Sort by earliest deadline first
+        upcoming.sort((a, b) => new Date(a.questionSetId.deadline) - new Date(b.questionSetId.deadline));
+        return upcoming[0];
+      }
+      
+      // If all have passed, return the most recent one (latest deadline)
+      group.sort((a, b) => {
+        const dA = a.questionSetId?.deadline ? new Date(a.questionSetId.deadline) : new Date(0);
+        const dB = b.questionSetId?.deadline ? new Date(b.questionSetId.deadline) : new Date(0);
+        return dB - dA;
+      });
+      return group[0];
+    });
+
+    return deduped;
   }, [challengesQuery.data, filters.setId, activeSet]);
 
   const meta = challengesQuery.data?.meta || { page: 1, totalPages: 1, total: challenges.length };
@@ -205,14 +253,17 @@ const Missions = () => {
 
   // Apply the Solved / Pending Review status filter client-side. The challenges
   // API has no per-user status, so we match against the user's own submissions.
+  // By default (All), hide solved challenges so users can focus on unsolved ones.
+  // When status === 'Accepted', show only the solved ones.
   const statusFilteredChallenges = useMemo(() => {
     if (filters.status === 'Accepted') {
-      return challenges.filter((ch) => subsMap[ch._id] === 'Accepted');
+      return challenges.filter((ch) => subsMap[ch._id]?.status === 'Accepted');
     }
     if (filters.status === 'Pending') {
-      return challenges.filter((ch) => subsMap[ch._id] === 'Pending');
+      return challenges.filter((ch) => subsMap[ch._id]?.status === 'Pending');
     }
-    return challenges;
+    // 'All' status: Hide solved (Accepted) challenges so they don't clutter the dashboard
+    return challenges.filter((ch) => subsMap[ch._id]?.status !== 'Accepted');
   }, [challenges, filters.status, subsMap]);
 
   const groupedChallenges = useMemo(() => {
@@ -463,10 +514,10 @@ const Missions = () => {
                               </span>
 
                               <div className="flex items-center gap-2">
-                                {subsMap[challenge._id] === 'Accepted' && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Solved</span>
+                                {subsMap[challenge._id]?.status === 'Accepted' && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Approved</span>
                                 )}
-                                {subsMap[challenge._id] === 'Pending' && (
+                                {subsMap[challenge._id]?.status === 'Pending' && (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Pending Review</span>
                                 )}
                                 {subsMap[challenge._id] === 'Rejected' && (
@@ -526,10 +577,10 @@ const Missions = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                              {subsMap[challenge._id] === 'Accepted' && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 hidden sm:block">Solved</span>
+                              {subsMap[challenge._id]?.status === 'Accepted' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 hidden sm:block">Approved</span>
                               )}
-                              {subsMap[challenge._id] === 'Pending' && (
+                              {subsMap[challenge._id]?.status === 'Pending' && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hidden sm:block">Pending Review</span>
                               )}
                               {subsMap[challenge._id] === 'Rejected' && (
