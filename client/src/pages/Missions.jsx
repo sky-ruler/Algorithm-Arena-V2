@@ -101,10 +101,11 @@ const Missions = () => {
         ? sub.challengeId._id
         : sub.challengeId;
       if (!challengeIdStr) return;
-      // Prioritize Accepted over Pending if multiple
-      if (!map[challengeIdStr] || sub.status === 'Accepted') {
-        map[challengeIdStr] = { status: sub.status, subId: sub._id };
+
+      if (!map[challengeIdStr]) {
+        map[challengeIdStr] = {};
       }
+      map[challengeIdStr][sub.status] = true;
     });
     return map;
   }, [submissionsQuery.data]);
@@ -257,13 +258,13 @@ const Missions = () => {
   // When status === 'Accepted', show only the solved ones.
   const statusFilteredChallenges = useMemo(() => {
     if (filters.status === 'Accepted') {
-      return challenges.filter((ch) => subsMap[ch._id]?.status === 'Accepted');
+      return challenges.filter((ch) => subsMap[ch._id]?.Accepted);
     }
     if (filters.status === 'Pending') {
-      return challenges.filter((ch) => subsMap[ch._id]?.status === 'Pending');
+      return challenges.filter((ch) => subsMap[ch._id]?.Pending);
     }
     // 'All' status: Hide solved (Accepted) challenges so they don't clutter the dashboard
-    return challenges.filter((ch) => subsMap[ch._id]?.status !== 'Accepted');
+    return challenges.filter((ch) => !subsMap[ch._id]?.Accepted);
   }, [challenges, filters.status, subsMap]);
 
   const groupedChallenges = useMemo(() => {
@@ -514,13 +515,13 @@ const Missions = () => {
                               </span>
 
                               <div className="flex items-center gap-2">
-                                {subsMap[challenge._id]?.status === 'Accepted' && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Approved</span>
+                                {subsMap[challenge._id]?.Accepted && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Solved</span>
                                 )}
-                                {subsMap[challenge._id]?.status === 'Pending' && (
+                                {subsMap[challenge._id]?.Pending && (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Pending Review</span>
                                 )}
-                                {subsMap[challenge._id] === 'Rejected' && (
+                                {subsMap[challenge._id]?.Rejected && !subsMap[challenge._id]?.Accepted && !subsMap[challenge._id]?.Pending && (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">Attempted</span>
                                 )}
                                 <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
@@ -577,13 +578,13 @@ const Missions = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                              {subsMap[challenge._id]?.status === 'Accepted' && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 hidden sm:block">Approved</span>
+                              {subsMap[challenge._id]?.Accepted && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 hidden sm:block">Solved</span>
                               )}
-                              {subsMap[challenge._id]?.status === 'Pending' && (
+                              {subsMap[challenge._id]?.Pending && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hidden sm:block">Pending Review</span>
                               )}
-                              {subsMap[challenge._id] === 'Rejected' && (
+                              {subsMap[challenge._id]?.Rejected && !subsMap[challenge._id]?.Accepted && !subsMap[challenge._id]?.Pending && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 hidden sm:block">Attempted</span>
                               )}
                               <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
