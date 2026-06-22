@@ -355,9 +355,9 @@ const QuestionSetsTab = () => {
         </div>
       )}
 
-      {deleteTarget&&<ConfirmDialog title="Delete Challenge" message={`Delete "${deleteTarget.title}"?`} onConfirm={()=>deleteChallengeMutation.mutate(deleteTarget._id)} onCancel={()=>setDeleteTarget(null)}/>}
+      {deleteTarget&&<ConfirmDialog open={true} title="Delete Challenge" description={`Delete "${deleteTarget.title}"?`} onConfirm={()=>deleteChallengeMutation.mutate(deleteTarget._id)} onCancel={()=>setDeleteTarget(null)}/>}
 
-      {deleteSetTarget&&<ConfirmDialog title="Delete Question Set" message={`Delete "${deleteSetTarget.title}" and its generated challenges? This cannot be undone.`} onConfirm={()=>deleteSetMutation.mutate(deleteSetTarget._id)} onCancel={()=>setDeleteSetTarget(null)}/>}
+      {deleteSetTarget&&<ConfirmDialog open={true} title="Delete Question Set" description={`Delete "${deleteSetTarget.title}" and its generated challenges? This cannot be undone.`} onConfirm={()=>deleteSetMutation.mutate(deleteSetTarget._id)} onCancel={()=>setDeleteSetTarget(null)}/>}
 
       {/* Import Modal */}
       <AnimatePresence>

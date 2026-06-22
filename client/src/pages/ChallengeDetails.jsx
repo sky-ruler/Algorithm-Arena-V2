@@ -228,18 +228,6 @@ const ChallengeDetails = () => {
     }
   }, [draftKey]);
 
-  useEffect(() => {
-    const hasAnyCode = Object.values(codeByLang).some((c) => c.trim());
-    if (!(repoUrl.trim() || hasAnyCode)) {
-      localStorage.removeItem(draftKey);
-      return;
-    }
-    localStorage.setItem(
-      draftKey,
-      JSON.stringify({ repoUrl, codeByLang, language }),
-    );
-  }, [draftKey, repoUrl, codeByLang, language]);
-
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
     queryFn: async () => {
@@ -247,6 +235,27 @@ const ChallengeDetails = () => {
       return res.data.data;
     },
   });
+
+  useEffect(() => {
+    const hasAnyCode = Object.values(codeByLang).some((c) => c.trim());
+    if (!(repoUrl.trim() || hasAnyCode)) {
+      localStorage.removeItem(draftKey);
+      return;
+    }
+    const challenge = challengeQuery.data;
+    localStorage.setItem(
+      draftKey,
+      JSON.stringify({
+        repoUrl,
+        codeByLang,
+        language,
+        challengeTitle: challenge?.title,
+        challengeDifficulty: challenge?.difficulty,
+        challengePoints: challenge?.points,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  }, [draftKey, repoUrl, codeByLang, language, challengeQuery.data]);
 
   const historyQuery = useQuery({
     queryKey: ["my-submissions", id],

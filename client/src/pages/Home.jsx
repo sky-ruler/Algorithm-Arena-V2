@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useScroll, useTransform } from "framer-motion";
@@ -18,6 +18,39 @@ import Logo from "../components/Logo";
 
 
 const MotionBlock = motion.div;
+
+const getLocalDrafts = () => {
+  const drafts = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("challenge-draft:")) {
+        const challengeId = key.split(":")[1];
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          const hasCode = draft.codeByLang && Object.values(draft.codeByLang).some(c => c && c.trim());
+          if (draft.repoUrl?.trim() || hasCode) {
+            drafts.push({
+              _id: `draft-${challengeId}`,
+              challengeId: {
+                _id: challengeId,
+                title: draft.challengeTitle || "Unknown Challenge",
+                difficulty: draft.challengeDifficulty || "Easy",
+                points: draft.challengePoints || 0,
+              },
+              status: "Attempted",
+              submittedAt: draft.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading drafts from localStorage", e);
+  }
+  return drafts;
+};
 
 /* ── Animated grid background ── */
 const GridBackground = () => (
@@ -255,16 +288,60 @@ const Home = () => {
   const challenges = challengesQuery.data || [];
 
   const submissionsQuery = useQuery({
-    queryKey: ["home-pending-tasks"],
+    queryKey: ["my-submissions"],
     queryFn: async () => {
-      const res = await api.get("/api/submissions?status=Pending");
+      const res = await api.get("/api/submissions/my-submissions");
       return res.data.data || [];
     },
     enabled: isAuthenticated,
   });
 
+  const drafts = useMemo(() => getLocalDrafts(), []);
 
-  const pendingTasks = submissionsQuery.data || [];
+  const recentActivities = useMemo(() => {
+    const dbSubs = submissionsQuery.data || [];
+    const uniqueMap = new Map();
+
+    dbSubs.forEach((sub) => {
+      const cid = sub.challengeId?._id || sub.challengeId;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (
+        !existing ||
+        sub.status === "Accepted" ||
+        new Date(sub.submittedAt) > new Date(existing.submittedAt)
+      ) {
+        uniqueMap.set(cid, sub);
+      }
+    });
+
+    drafts.forEach((draft) => {
+      const cid = draft.challengeId?._id;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (!existing || existing.status !== "Accepted") {
+        uniqueMap.set(cid, draft);
+      }
+    });
+
+    const list = Array.from(uniqueMap.values());
+    const statusWeight = {
+      "Attempted": 1,
+      "Rejected": 2,
+      "Pending": 3,
+      "Accepted": 4
+    };
+
+    return list.sort((a, b) => {
+      const weightA = statusWeight[a.status] || 3;
+      const weightB = statusWeight[b.status] || 3;
+      if (weightA !== weightB) {
+        return weightA - weightB;
+      }
+      return new Date(b.submittedAt) - new Date(a.submittedAt);
+    });
+  }, [submissionsQuery.data, drafts]);
+
 
   return (
     <div ref={homeRef} className="min-h-screen flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white">
@@ -500,58 +577,88 @@ const Home = () => {
         <div className="relative z-10 px-6 pb-24">
           <div className="max-w-6xl mx-auto space-y-20">
             {/* Pending Tasks */}
-            {pendingTasks.length > 0 && (
+            {recentActivities.length > 0 && (
               <section className="space-y-8">
                 <div className="flex items-center gap-3">
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(234, 179, 8, 0.1)" }}
+                    style={{ background: "rgba(99, 102, 241, 0.1)" }}
                   >
-                    <FiClock className="text-yellow-500 animate-pulse" />
+                    <FiActivity className="text-accent animate-pulse" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black">Pending Tasks</h2>
+                    <h2 className="text-2xl font-black">Recent Activity</h2>
                     <p className="text-secondary text-sm">
-                      Under review — hang tight.
+                      Track your progress and updates.
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {pendingTasks.map((task, i) => (
-                    <MotionBlock
-                      key={task._id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 + i * 0.1 }}
-                    >
-                      <Link
-                        to={`/submission/${task._id}`}
-                        className="block group"
+                  {recentActivities.slice(0, 6).map((task, i) => {
+                    const isAttempted = task.status === "Attempted";
+                    const isRejected = task.status === "Rejected";
+                    const isPending = task.status === "Pending";
+                    
+                    const badgeText = isAttempted
+                      ? "Attempted"
+                      : isRejected
+                        ? "Rejected"
+                        : isPending
+                          ? "Pending Review"
+                          : "Solved";
+                          
+                    const badgeColor = isAttempted
+                      ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
+                      : isRejected
+                        ? "text-red-400 bg-red-500/10 border-red-500/20"
+                        : isPending
+                          ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"
+                          : "text-green-400 bg-green-500/10 border-green-500/20";
+                          
+                    const diffColor = isAttempted
+                      ? "99, 102, 241"
+                      : isRejected
+                        ? "239, 68, 68"
+                        : isPending
+                          ? "234, 179, 8"
+                          : "34, 197, 94";
+
+                    return (
+                      <MotionBlock
+                        key={task._id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 + i * 0.1 }}
                       >
-                        <Card difficultyColor="234, 179, 8" className="p-5">
-                          <div className="flex justify-between items-start mb-3">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-md">
-                              Under Review
-                            </span>
-                            <span className="text-secondary text-[10px]">
-                              {new Date(task.submittedAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          <h3 className="font-bold text-base group-hover:text-yellow-500 transition-colors">
-                            {task.challengeId?.title || "Unknown Challenge"}
-                          </h3>
-                          <div className="mt-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-xs text-secondary">
-                              <FiActivity className="text-yellow-500" />
-                              <span>View Status</span>
+                        <Link
+                          to={isAttempted ? `/challenge/${task.challengeId?._id}` : `/submission/${task._id}`}
+                          className="block group"
+                        >
+                          <Card difficultyColor={diffColor} className="p-5">
+                            <div className="flex justify-between items-start mb-3">
+                              <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md border ${badgeColor}`}>
+                                {badgeText}
+                              </span>
+                              <span className="text-secondary text-[10px]">
+                                {new Date(task.submittedAt).toLocaleDateString()}
+                              </span>
                             </div>
-                            <FiArrowRight className="text-secondary group-hover:translate-x-1 transition-transform text-sm" />
-                          </div>
-                        </Card>
-                      </Link>
-                    </MotionBlock>
-                  ))}
+                            <h3 className="font-bold text-base group-hover:text-accent transition-colors font-h2">
+                              {task.challengeId?.title || "Unknown Challenge"}
+                            </h3>
+                            <div className="mt-4 flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-xs text-secondary">
+                                <FiActivity className="text-accent" />
+                                <span>{isAttempted ? "Resume Challenge" : "View Status"}</span>
+                              </div>
+                              <FiArrowRight className="text-secondary group-hover:translate-x-1 transition-transform text-sm" />
+                            </div>
+                          </Card>
+                        </Link>
+                      </MotionBlock>
+                    );
+                  })}
                 </div>
               </section>
             )}
