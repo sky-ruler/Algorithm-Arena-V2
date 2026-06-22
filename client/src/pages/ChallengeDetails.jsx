@@ -598,10 +598,18 @@ const ChallengeDetails = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-5">
             {leftTab === "description" ? (
-              <div
-                className="leetcode-description"
-                dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
-              />
+              <div className="flex flex-col gap-4">
+                {historyQuery.data?.some(sub => sub.status === 'Accepted') && (
+                  <div className="px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm flex items-start gap-3 font-semibold">
+                    <FiCheck className="mt-0.5 shrink-0" />
+                    <p>You have already solved it once. You will not get anymore exp by completing it again.</p>
+                  </div>
+                )}
+                <div
+                  className="leetcode-description"
+                  dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+                />
+              </div>
             ) : leftTab === "submissions" ? (
               <div className="space-y-3">
                 {historyQuery.data?.map((sub) => (
