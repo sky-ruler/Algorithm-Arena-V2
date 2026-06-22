@@ -1152,7 +1152,7 @@ const ChallengeDetails = () => {
             </div>
             <h2 className="text-lg font-bold text-white mb-2">Notice</h2>
             <p className="text-secondary text-sm mb-6">
-              No extra exp will be added for re-solving an approved solution
+              No extra exp will be rewarded in solving this problem
             </p>
             <button
               className="w-full py-2.5 rounded-lg font-semibold bg-accent text-white hover:opacity-90 transition-opacity"
