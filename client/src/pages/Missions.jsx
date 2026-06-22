@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { FiGrid, FiList, FiX, FiTarget, FiClock } from 'react-icons/fi';
+import { FiGrid, FiList, FiX, FiTarget, FiClock, FiCheck } from 'react-icons/fi';
 import { api } from '../lib/api';
 import ChallengeCard from '../components/Card';
 import SkeletonCard from '../components/SkeletonCard';
@@ -256,9 +256,14 @@ const Missions = () => {
     }));
   };
 
+  const [showModal, setShowModal] = useState(false);
+  const [selectedChallenge, setSelectedChallenge] = useState(null);
+
   const handleChallengeClick = (e, challengeId) => {
     if (subsMap[challengeId] === 'Accepted') {
-      window.alert("No extra exp will be rewarded in solving this problem");
+      e.preventDefault();
+      setSelectedChallenge(challengeId);
+      setShowModal(true);
     }
   };
 
@@ -470,7 +475,7 @@ const Missions = () => {
 
                               <div className="flex items-center gap-2">
                                 {subsMap[challenge._id] === 'Accepted' && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Solved</span>
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Approved</span>
                                 )}
                                 {subsMap[challenge._id] === 'Pending' && (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Pending Review</span>
@@ -585,6 +590,31 @@ const Missions = () => {
           </>
         )}
       </div>
+
+      {/* Warning Popup Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#111111] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-200">
+            <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mb-4 text-yellow-500">
+              <FiCheck size={24} />
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">Notice</h2>
+            <p className="text-secondary text-sm mb-6">
+              No extra exp will be rewarded in solving this problem
+            </p>
+            <button
+              className="w-full py-2.5 rounded-lg font-semibold bg-accent text-white hover:opacity-90 transition-opacity"
+              onClick={() => {
+                setShowModal(false);
+                navigate(`/challenge/${selectedChallenge}`);
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
