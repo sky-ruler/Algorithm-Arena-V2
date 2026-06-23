@@ -157,6 +157,7 @@ const MembersTab = () => {
   // Filter users
   const filteredUsers = (usersQuery.data || []).filter(u => {
     if (u.role === 'superAdmin') return false;
+    if (u.role === 'admin' && user?.role !== 'superAdmin') return false;
     
     const s = search.toLowerCase();
     const matchSearch = (u.username || '').toLowerCase().includes(s) || 
