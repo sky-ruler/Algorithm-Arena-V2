@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiInstagram, FiLinkedin } from 'react-icons/fi';
+import { FaWhatsapp, FaDiscord } from 'react-icons/fa';
 import Logo from './Logo';
 
 const Footer = () => {
@@ -50,23 +51,46 @@ const Footer = () => {
 
             {/* Social Icons */}
             <div className="flex items-center gap-4">
+
               <a 
-                href="https://instagram.com" 
+                href="https://whatsapp.com/channel/0029VbBdIckHVvTRsbC5SJ16" 
                 target="_blank" 
                 rel="noopener noreferrer"
+                title="WhatsApp Channel"
+                className="w-10 h-10 rounded-full border flex items-center justify-center text-secondary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all duration-300"
+                style={{ borderColor: `rgba(var(--accent-rgb), 0.25)` }}
+              >
+                <FaWhatsapp size={16} />
+              </a>
+              <a 
+                href="https://www.instagram.com/gdg_iter?igsh=MXFhc3UwdW40NmQ2cg==" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                title="Instagram"
                 className="w-10 h-10 rounded-full border flex items-center justify-center text-secondary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all duration-300"
                 style={{ borderColor: `rgba(var(--accent-rgb), 0.25)` }}
               >
                 <FiInstagram size={16} />
               </a>
               <a 
-                href="https://linkedin.com" 
+                href="https://www.linkedin.com/company/google-developer-student-club-iter/" 
                 target="_blank" 
                 rel="noopener noreferrer"
+                title="LinkedIn"
                 className="w-10 h-10 rounded-full border flex items-center justify-center text-secondary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all duration-300"
                 style={{ borderColor: `rgba(var(--accent-rgb), 0.25)` }}
               >
                 <FiLinkedin size={16} />
+              </a>
+              <a 
+                href="https://discord.gg/csMG6yKzc" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                title="Discord"
+                className="w-10 h-10 rounded-full border flex items-center justify-center text-secondary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all duration-300"
+                style={{ borderColor: `rgba(var(--accent-rgb), 0.25)` }}
+              >
+                <FaDiscord size={16} />
               </a>
             </div>
           </div>

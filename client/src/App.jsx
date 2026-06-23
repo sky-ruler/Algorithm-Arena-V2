@@ -15,6 +15,7 @@ const Home = lazy(() => import('./pages/Home'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Terms = lazy(() => import('./pages/Terms'));
 const Contact = lazy(() => import('./pages/Contact'));
+const About = lazy(() => import('./pages/About'));
 const Login = lazy(() => import('./pages/Login'));
 const ClaimUsername = lazy(() => import('./pages/ClaimUsername'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -53,6 +54,7 @@ function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/about" element={<About />} />
           <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/register" element={<Navigate to="/login" replace />} />
 
