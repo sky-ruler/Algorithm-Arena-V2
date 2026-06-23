@@ -96,20 +96,6 @@ const MembersTab = ({ initialClanFilter }) => {
     }
   });
 
-  const removeChiefMutation = useMutation({
-    mutationFn: async (clanId) => {
-      return api.delete(`/api/clans/${clanId}/chief`);
-    },
-    onSuccess: () => {
-      toast.success("Clan Chief removed successfully");
-      queryClient.invalidateQueries({ queryKey: ['admin-all-users'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-clans-list'] });
-      setMenuOpen(null);
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Failed to remove chief");
-    }
-  });
 
   const banUserMutation = useMutation({
     mutationFn: async (userId) => {
