@@ -12,6 +12,9 @@ import NotificationListener from './components/NotificationListener';
 import { useAuth } from './context/useAuth';
 
 const Home = lazy(() => import('./pages/Home'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Contact = lazy(() => import('./pages/Contact'));
 const Login = lazy(() => import('./pages/Login'));
 const ClaimUsername = lazy(() => import('./pages/ClaimUsername'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -47,6 +50,9 @@ function App() {
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/register" element={<Navigate to="/login" replace />} />
 
