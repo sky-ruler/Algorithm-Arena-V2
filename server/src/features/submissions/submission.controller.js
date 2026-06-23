@@ -176,9 +176,23 @@ const getLeaderboard = async (req, res, next) => {
     const { window = 'all', page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    let activeUserIds = null;
+    let result = [];
 
-    if (window !== 'all') {
+    if (window === 'all') {
+      const User = require('../users/User.model');
+      const users = await User.find({ role: { $ne: 'superAdmin' } })
+        .sort({ points: -1, solvedProblems: -1 })
+        .select('username profilePicture points solvedProblems')
+        .lean();
+      
+      result = users.map((u) => ({
+        _id: u._id,
+        username: u.username,
+        profilePicture: u.profilePicture,
+        solvedCount: u.solvedProblems || 0,
+        totalPoints: u.points || 0,
+      }));
+    } else {
       const match = { status: 'Accepted' };
       if (window === '30d') {
         const now = new Date();
@@ -186,52 +200,72 @@ const getLeaderboard = async (req, res, next) => {
       } else if (window === '7d') {
         match.submittedAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
       }
-      
-      const activeIds = await Submission.distinct('userId', match);
-      activeUserIds = activeIds;
+
+      result = await Submission.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: { userId: '$userId', challengeId: '$challengeId' }
+          }
+        },
+        {
+          $lookup: {
+            from: 'challenges',
+            localField: '_id.challengeId',
+            foreignField: '_id',
+            as: 'challenge',
+          },
+        },
+        { $unwind: '$challenge' },
+        {
+          $group: {
+            _id: '$_id.userId',
+            solvedCount: { $sum: 1 },
+            challengePoints: { $sum: '$challenge.points' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        { $unwind: '$user' },
+        {
+          $addFields: {
+            totalPoints: '$challengePoints',
+          },
+        },
+        { $sort: { totalPoints: -1, solvedCount: -1 } },
+        {
+          $project: {
+            _id: 1,
+            username: '$user.username',
+            profilePicture: '$user.profilePicture',
+            solvedCount: 1,
+            totalPoints: 1,
+          },
+        }
+      ]);
     }
 
-    const User = require('../users/User.model');
-    const userFilter = { role: { $ne: 'superAdmin' } };
-    if (activeUserIds !== null) {
-      userFilter._id = { $in: activeUserIds };
-    }
-
-    const users = await User.find(userFilter)
-      .sort({ points: -1, solvedProblems: -1 })
-      .select('username profilePicture points solvedProblems')
-      .skip(skip)
-      .limit(Number(limit))
-      .lean();
-    
-    const total = await User.countDocuments(userFilter);
-
-    // Compute shared ranks for users on this page
-    const uniquePoints = [...new Set(users.map(u => u.points))];
-    const firstPersonRanks = {};
-    
-    await Promise.all(uniquePoints.map(async (p) => {
-      const count = await User.countDocuments({ ...userFilter, points: { $gt: p } });
-      firstPersonRanks[p] = count + 1;
-    }));
-
-    const data = users.map((u, i) => {
-      const strictRank = skip + i + 1;
+    // Apply custom tie-breaker logic in memory
+    result.forEach((u, i) => {
+      const strictRank = i + 1;
       let displayRank = strictRank;
       
       if (strictRank > 3) {
-        displayRank = Math.max(4, firstPersonRanks[u.points]);
+        // Find the index of the first person with the exact same points
+        const firstPersonIndex = result.findIndex(x => x.totalPoints === u.totalPoints);
+        displayRank = Math.max(4, firstPersonIndex + 1);
       }
-
-      return {
-        _id: u._id,
-        username: u.username,
-        profilePicture: u.profilePicture,
-        solvedCount: u.solvedProblems || 0,
-        totalPoints: u.points || 0,
-        rank: displayRank,
-      };
+      u.rank = displayRank;
     });
+
+    const total = result.length;
+    const data = result.slice(skip, skip + Number(limit));
 
     return sendSuccess(res, {
       data,

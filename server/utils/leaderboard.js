@@ -1,38 +1,63 @@
-const User = require('../src/features/users/User.model');
+const Submission = require('../src/features/submissions/Submission.model');
 
 /**
- * Computes the global rank of a single user efficiently by counting users with more points.
+ * Computes the rank of a single user using a DB-level pipeline.
+ * Uses $setWindowFields + $match so only one document is returned — no JS-level
+ * array iteration over the full leaderboard.
  *
- * @param {mongoose.Types.ObjectId|string} userId
- * @returns {Promise<number|null>} 1-based rank, or null if user not found.
+ * @param {mongoose.Types.ObjectId} userId
+ * @returns {Promise<number|null>} 1-based rank, or null if no accepted submissions.
  */
 const getUserRank = async (userId) => {
-  const targetUser = await User.findById(userId).select('points solvedProblems');
-  if (!targetUser) return null;
+  // Compute global rank dynamically to match getLeaderboard
+  const mongoose = require('mongoose');
+  
+  // Ensure userId is ObjectId
+  const targetUserId = new mongoose.Types.ObjectId(userId);
 
-  const strictHigherRankedCount = await User.countDocuments({
-    role: { $ne: 'superAdmin' },
-    $or: [
-      { points: { $gt: targetUser.points } },
-      { points: targetUser.points, solvedProblems: { $gt: targetUser.solvedProblems || 0 } },
-      { points: targetUser.points, solvedProblems: targetUser.solvedProblems || 0, _id: { $lt: targetUser._id } }
-    ]
+  const result = await Submission.aggregate([
+    { $match: { status: 'Accepted' } },
+    {
+      $group: {
+        _id: { userId: '$userId', challengeId: '$challengeId' }
+      }
+    },
+    {
+      $lookup: {
+        from: 'challenges',
+        localField: '_id.challengeId',
+        foreignField: '_id',
+        as: 'challenge',
+      },
+    },
+    { $unwind: '$challenge' },
+    {
+      $group: {
+        _id: '$_id.userId',
+        solvedCount: { $sum: 1 },
+        totalPoints: { $sum: '$challenge.points' },
+      },
+    },
+    { $sort: { totalPoints: -1, solvedCount: -1 } }
+  ]);
+
+  // Apply custom tie-breaker logic in memory
+  let userRank = null;
+  result.forEach((u, i) => {
+    const strictRank = i + 1;
+    let displayRank = strictRank;
+    
+    if (strictRank > 3) {
+      const firstPersonIndex = result.findIndex(x => x.totalPoints === u.totalPoints);
+      displayRank = Math.max(4, firstPersonIndex + 1);
+    }
+    
+    if (u._id.equals(targetUserId)) {
+      userRank = displayRank;
+    }
   });
 
-  const strictRank = strictHigherRankedCount + 1;
-
-  if (strictRank <= 3) {
-    return strictRank;
-  }
-
-  // If > 3, they share rank with anyone who has the same points, but minimum rank is 4
-  const strictlyGreaterPointsCount = await User.countDocuments({
-    role: { $ne: 'superAdmin' },
-    points: { $gt: targetUser.points }
-  });
-
-  const firstPersonRank = strictlyGreaterPointsCount + 1;
-  return Math.max(4, firstPersonRank);
+  return userRank;
 };
 
 module.exports = { getUserRank };
