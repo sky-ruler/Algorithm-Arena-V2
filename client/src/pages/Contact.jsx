@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiMail, FiMapPin, FiMessageSquare } from "react-icons/fi";
+import { FiMail, FiMapPin, FiMessageSquare, FiCopy } from "react-icons/fi";
 import Logo from "../components/Logo";
 import Footer from "../components/Footer";
 import Card from "../components/Card";
@@ -134,8 +134,12 @@ const Contact = () => {
                   <FiMail size={32} className="text-accent" />
                 </div>
                 <h2 className="text-3xl font-bold mb-3">Email Us</h2>
-                <p className="text-secondary mb-8 text-base">
+                <p className="text-secondary mb-6 text-base">
                   For general inquiries, support, or partnership opportunities, drop us a direct email and we'll get back to you promptly.
+                </p>
+
+                <p className="text-primary font-mono text-sm mb-4">
+                  Mail us at : <span className="text-accent font-bold">gdsciter@gmail.com</span>
                 </p>
                 
                 {/* Dynamic Mail Button (Apple Mail or Gmail Web) */}
