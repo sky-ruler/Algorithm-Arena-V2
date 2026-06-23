@@ -139,7 +139,7 @@ const Contact = () => {
                 </p>
 
                 <p className="text-primary font-mono text-sm mb-4">
-                  Or email us directly at: <span className="text-accent">gdsciter@gmail.com</span>
+                  you can mail us at : <span className="text-accent font-bold">gdsciter@gmail.com</span>
                 </p>
                 
                 {/* Dynamic Mail Button (Apple Mail or Gmail Web) */}
