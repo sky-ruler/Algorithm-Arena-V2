@@ -1,4 +1,5 @@
 const User = require('../users/User.model');
+const XpLog = require('../users/XpLog.model');
 const RefreshToken = require('./RefreshToken.model');
 const { sendSuccess } = require('../../../utils/response');
 const { verifyGoogleToken } = require('./googleAuth');
@@ -194,9 +195,21 @@ const googleAuth = async (req, res, next) => {
     const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
     const isFirstLoginToday = !lastLogin || lastLogin < today;
 
-    if (isFirstLoginToday && !isNewUser) {
+    const XpLog = require('../users/XpLog.model');
+    const existingDailyLog = await XpLog.exists({
+      userId: user._id,
+      reason: 'Daily Login',
+      createdAt: { $gte: today }
+    });
+
+    if (isFirstLoginToday && !existingDailyLog) {
       user.points = (user.points || 0) + 50;
       dailyXpAwarded = true;
+      await XpLog.create({
+        userId: user._id,
+        amount: 50,
+        reason: 'Daily Login',
+      });
     }
 
     user.lastLoginDate = now;
