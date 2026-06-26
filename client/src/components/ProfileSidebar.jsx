@@ -32,7 +32,6 @@ const FALLBACK_BADGES = [
 /* ── XP Level helper ─────────────────────────────────────── */
 const XP_PER_LEVEL = 500;
 const getLevel = (xp) => Math.floor(xp / XP_PER_LEVEL) + 1;
-const getLevelPct = (xp) => ((xp % XP_PER_LEVEL) / XP_PER_LEVEL) * 100;
 
 /* ── Animated XP bar ─────────────────────────────────────── */
 const XPBar = ({ xp, loginXp = 0, challengeXp = 0, loginCount = 0 }) => {
@@ -43,7 +42,6 @@ const XPBar = ({ xp, loginXp = 0, challengeXp = 0, loginCount = 0 }) => {
   const lvl = getLevel(xp);
   
   const loginRatio = xp > 0 ? loginXp / xp : 0;
-  const challengeRatio = xp > 0 ? challengeXp / xp : 1;
 
   return (
     <div ref={ref} className="space-y-1.5 relative group">
