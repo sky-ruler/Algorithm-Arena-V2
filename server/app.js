@@ -94,13 +94,24 @@ const createApp = () => {
   // Stricter limiter for auth endpoints to prevent brute-force attacks
   const authLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: isNonProductionEnv ? 200 : 100,
+    max: isNonProductionEnv ? 300 : 200,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many authentication attempts, please try again later.' },
   });
   app.use('/api/auth/google', authLimiter);
   app.use('/api/auth/claim-username', authLimiter);
+
+  // Generous limiter for the token-refresh endpoint — it gets hit frequently
+  // by SPAs recovering from expired access tokens and must not 429 active users.
+  const refreshLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: isNonProductionEnv ? 2000 : 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many refresh attempts, please try again later.' },
+  });
+  app.use('/api/auth/refresh', refreshLimiter);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/challenges', challengeRoutes);

@@ -20,7 +20,7 @@ const envSchema = z
     JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters').optional(),
     JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters').optional(),
     JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters').optional(),
-    ACCESS_TOKEN_TTL: z.string().default('15m'),
+    ACCESS_TOKEN_TTL: z.string().default('60m'),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().max(90).default(14),
     REFRESH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
     COOKIE_SECURE: cookieSecureSchema,
