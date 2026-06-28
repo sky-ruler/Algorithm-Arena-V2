@@ -4,20 +4,23 @@ import React, { useState, useEffect } from 'react';
 const globalImageCache = new Map();
 
 const CachedImage = ({ src, alt = '', className = '', ...props }) => {
+  const [prevSrc, setPrevSrc] = useState(src);
   const [currentSrc, setCurrentSrc] = useState(() => {
     if (!src) return '';
     return globalImageCache.get(src) || src;
   });
 
-  useEffect(() => {
-    if (!src) {
-      setCurrentSrc('');
-      return;
-    }
+  // Adjust state during render if the src prop has changed (React recommended pattern)
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setCurrentSrc(!src ? '' : (globalImageCache.get(src) || src));
+  }
 
-    // If already preloaded and cached, use it immediately
+  useEffect(() => {
+    if (!src) return;
+
+    // If already preloaded and cached, do nothing (state is already correct)
     if (globalImageCache.has(src)) {
-      setCurrentSrc(globalImageCache.get(src));
       return;
     }
 
@@ -60,4 +63,3 @@ const CachedImage = ({ src, alt = '', className = '', ...props }) => {
 };
 
 export default CachedImage;
-export { globalImageCache };
