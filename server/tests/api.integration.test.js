@@ -196,6 +196,20 @@ test('challenge + submission flow enforces owner permissions', async () => {
   assert.equal(submissionRes.status, 201);
   const submissionId = submissionRes.body.data._id;
 
+  // Test userFeedback validation and storage
+  const submissionWithFeedbackRes = await request(app)
+    .post('/api/submissions')
+    .set('Authorization', `Bearer ${studentToken}`)
+    .send({
+      challengeId,
+      code: 'function solve(){ return [0,1]; }',
+      language: 'javascript',
+      userFeedback: 'I had some issues with environment timeouts.',
+    });
+
+  assert.equal(submissionWithFeedbackRes.status, 201);
+  assert.equal(submissionWithFeedbackRes.body.data.userFeedback, 'I had some issues with environment timeouts.');
+
   const ownSubmission = await request(app)
     .get(`/api/submissions/${submissionId}`)
     .set('Authorization', `Bearer ${studentToken}`);
