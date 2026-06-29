@@ -350,11 +350,13 @@ const Dashboard = () => {
   const solvedPct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
   const activeSets = useMemo(
-    () =>
-      (setsQ.data || [])
-        .filter((s) => new Date(s.deadline) > new Date())
-        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline)),
-    [setsQ.data],
+    () => {
+      const nowTime = new Date(now);
+      return (setsQ.data || [])
+        .filter((s) => new Date(s.deadline) > nowTime)
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+    },
+    [setsQ.data, now],
   );
   const clampedIdx = Math.min(heroIdx, Math.max(activeSets.length - 1, 0));
   const activeSet = activeSets[clampedIdx];
@@ -365,9 +367,9 @@ const Dashboard = () => {
       ? new Date(activeSet.createdAt)
       : activeSet.deadline
         ? new Date(new Date(activeSet.deadline).getTime() - 7 * 24 * 60 * 60 * 1000)
-        : new Date();
-    return Date.now() - createdDate.getTime() < 7 * 24 * 60 * 60 * 1000;
-  }, [activeSet]);
+        : new Date(now);
+    return now - createdDate.getTime() < 7 * 24 * 60 * 60 * 1000;
+  }, [activeSet, now]);
 
   const goHero = (dir) => {
     setHeroDir(dir);
