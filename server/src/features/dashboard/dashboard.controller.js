@@ -204,9 +204,18 @@ const getProfileStats = async (req, res, next) => {
 
     // Get XP breakdown
     const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
-    const xpLogs = await XpLog.find({ userId, reason: 'Daily Login' });
-    const loginXp = xpLogs.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-    const loginCount = xpLogs.length;
+    const [xpStats] = await XpLog.aggregate([
+      { $match: { userId, reason: 'Daily Login' } },
+      {
+        $group: {
+          _id: null,
+          loginXp: { $sum: '$amount' },
+          loginCount: { $sum: 1 }
+        }
+      }
+    ]);
+    const loginXp = xpStats?.loginXp || 0;
+    const loginCount = xpStats?.loginCount || 0;
     const challengeXp = (user.points || 0) - loginXp;
 
     // Compute unlocked badges dynamically
@@ -366,9 +375,18 @@ const getUserProfile = async (req, res, next) => {
 
     // Get XP breakdown
     const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
-    const xpLogs = await XpLog.find({ userId, reason: 'Daily Login' });
-    const loginXp = xpLogs.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-    const loginCount = xpLogs.length;
+    const [xpStats] = await XpLog.aggregate([
+      { $match: { userId, reason: 'Daily Login' } },
+      {
+        $group: {
+          _id: null,
+          loginXp: { $sum: '$amount' },
+          loginCount: { $sum: 1 }
+        }
+      }
+    ]);
+    const loginXp = xpStats?.loginXp || 0;
+    const loginCount = xpStats?.loginCount || 0;
     const challengeXp = (user.points || 0) - loginXp;
 
     // Global rank using shared utility (DB-level, no full array in RAM)
