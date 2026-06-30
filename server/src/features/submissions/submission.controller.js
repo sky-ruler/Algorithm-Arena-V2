@@ -155,9 +155,8 @@ const getMySubmissions = async (req, res, next) => {
       .populate('challengeId', 'title difficulty points')
       .sort({ submittedAt: -1 });
 
-    if (req.query.limit) {
-      query = query.limit(Number(req.query.limit));
-    }
+    const limit = req.query.limit ? Number(req.query.limit) : 100;
+    query = query.limit(limit);
 
     const submissions = await query;
 

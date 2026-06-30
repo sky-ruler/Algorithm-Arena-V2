@@ -42,6 +42,12 @@ test.after(async () => {
 
 test.beforeEach(async () => {
   await clearDatabase();
+  try {
+    const { clearChiefClanCache } = require('../src/features/clans/clanScope.service.js');
+    clearChiefClanCache();
+  } catch (err) {
+    // Ignore
+  }
 });
 
 const registerUser = async ({ username, email, password = 'strong-password' }) => {
@@ -715,5 +721,115 @@ test('leaderboard window=all pagination, tie-breaking, and topThree calculation 
   assert.equal(page3.body.data.length, 1);
   assert.equal(page3.body.data[0].username, 'user_e');
   assert.equal(page3.body.data[0].rank, 5); // User E has rank 5 since there are 4 users ahead of them
+});
+
+test('getMySubmissions default limit defaults to 100', async () => {
+  const user = await registerUser({ username: 'submit_limit_user', email: 'submit_limit@example.com' });
+  const Challenge = require('../src/features/challenges/Challenge.model.js');
+  const challenge = await Challenge.create({
+    title: 'Limit Test Challenge',
+    description: 'Test limit',
+    difficulty: 'Medium',
+    points: 100,
+    category: 'Strings',
+  });
+
+  // Create 105 submissions
+  const submissionsData = Array.from({ length: 105 }, (_, i) => ({
+    userId: user.id,
+    challengeId: challenge._id,
+    code: `// submission ${i}`,
+    language: 'javascript',
+    status: 'Accepted',
+    submittedAt: new Date(Date.now() - i * 1000),
+  }));
+  await Submission.insertMany(submissionsData);
+
+  const res = await request(app)
+    .get('/api/submissions/my')
+    .set('Authorization', `Bearer ${user.token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.length, 100); // Verify default hard server-side limit of 100 is applied
+});
+
+test('getChallenges uses text index search correctly', async () => {
+  const Challenge = require('../src/features/challenges/Challenge.model.js');
+  await Challenge.createIndexes(); // Force-compile indexes
+
+  await Challenge.create([
+    { title: 'Searchable Binary Tree Challenge', description: 'Find the path', category: 'Trees' },
+    { title: 'Another Unrelated Task', description: 'Binary search tree helper', category: 'Logic' },
+    { title: 'Something Else', description: 'Nothing related to trees', category: 'Logic' },
+  ]);
+
+  const user = await registerUser({ username: 'search_user', email: 'search@example.com' });
+
+  const res = await request(app)
+    .get('/api/challenges?search=Binary')
+    .set('Authorization', `Bearer ${user.token}`);
+
+  assert.equal(res.status, 200);
+  // Both first and second challenges match "Binary" text search
+  assert.equal(res.body.data.length, 2);
+  const titles = res.body.data.map(c => c.title);
+  assert.ok(titles.includes('Searchable Binary Tree Challenge'));
+  assert.ok(titles.includes('Another Unrelated Task'));
+});
+
+test('clan chief lookup is cached and behaves correctly on mutations', async () => {
+  const admin = await registerUser({ username: 'admin_test_chief', email: 'admin_chief@example.com' });
+  // Manually update role of admin to 'admin' so we can create/manage chief
+  await User.findByIdAndUpdate(admin.id, { role: 'admin' });
+
+  const chiefUser = await registerUser({ username: 'chief_user_cache', email: 'chief_cache@example.com' });
+  const memberUser = await registerUser({ username: 'member_user_cache', email: 'member_cache@example.com' });
+
+  // 1. Create a clan
+  const clanRes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ name: 'Cache Clan', tag: 'CACL' });
+  assert.equal(clanRes.status, 201);
+  const clanId = clanRes.body.data._id;
+
+  // 2. Add chiefUser as a member first (so they can be promoted to chief)
+  const addChiefMemberRes = await request(app)
+    .post(`/api/clans/${clanId}/members`)
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ userId: chiefUser.id });
+  assert.equal(addChiefMemberRes.status, 200);
+
+  // 3. Assign chief
+  const assignChiefRes = await request(app)
+    .put(`/api/clans/${clanId}/chief`)
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ userId: chiefUser.id });
+  assert.equal(assignChiefRes.status, 200);
+
+  // 4. Add member to clan
+  const addMemberRes = await request(app)
+    .post(`/api/clans/${clanId}/members`)
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ userId: memberUser.id });
+  assert.equal(addMemberRes.status, 200);
+
+  // 5. Act as chief to populate cache
+  const { getActorMemberIdsInScope } = require('../src/features/clans/clanScope.service.js');
+  // Get updated chief user object with role 'clan-chief'
+  const chiefActor = await User.findById(chiefUser.id).lean();
+  
+  const members1 = await getActorMemberIdsInScope(chiefActor);
+  assert.ok(members1.memberIds.includes(memberUser.id));
+
+  // 6. Remove member from clan (which triggers mongoose middleware hook to evict cache)
+  const removeMemberRes = await request(app)
+    .delete(`/api/clans/${clanId}/members/${memberUser.id}`)
+    .set('Authorization', `Bearer ${admin.token}`);
+  assert.equal(removeMemberRes.status, 200);
+
+  // 7. Act as chief again - the cached clan must have been evicted, so it queries the db and gets updated members list
+  const members2 = await getActorMemberIdsInScope(chiefActor);
+  assert.ok(!members2.memberIds.includes(memberUser.id));
 });
 

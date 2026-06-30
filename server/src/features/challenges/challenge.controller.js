@@ -35,14 +35,7 @@ const getChallenges = async (req, res, next) => {
       });
     }
     if (search) {
-      andConditions.push({
-        $or: [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-          { tags: { $in: [new RegExp(search, 'i')] } },
-          { category: { $regex: search, $options: 'i' } }
-        ]
-      });
+      andConditions.push({ $text: { $search: search } });
     }
 
     if (andConditions.length > 0) {
