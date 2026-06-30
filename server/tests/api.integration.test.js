@@ -886,3 +886,92 @@ test('getChallenges and getSubmissions limit parameter clamping', async () => {
   assert.equal(submissionRes.body.meta.limit, 50);
 });
 
+test('getAdminDashboardSummary calculates live completions and avgCompletion', async () => {
+  const Challenge = require('../src/features/challenges/Challenge.model.js');
+
+  const admin = await registerUser({ username: 'admin_dashboard_test', email: 'admin_dashboard@example.com' });
+  await User.findByIdAndUpdate(admin.id, { role: 'admin' });
+
+  const adminLogin = await request(app).post('/api/auth/login').send({
+    email: 'admin_dashboard@example.com',
+    password: 'strong-password',
+  });
+  const adminToken = adminLogin.body.data.token;
+
+  // Create two clans
+  const clanARes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Alpha', tag: 'ALPH' });
+  assert.equal(clanARes.status, 201);
+  const clanAId = clanARes.body.data._id;
+
+  const clanBRes = await request(app)
+    .post('/api/clans')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: 'Clan Beta', tag: 'BETA' });
+  assert.equal(clanBRes.status, 201);
+  const clanBId = clanBRes.body.data._id;
+
+  // Register two members
+  const memberA = await registerUser({ username: 'member_a_dash', email: 'membera_dash@example.com' });
+  const memberB = await registerUser({ username: 'member_b_dash', email: 'memberb_dash@example.com' });
+
+  // Add members to respective clans
+  await request(app)
+    .post(`/api/clans/${clanAId}/members`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: memberA.id });
+
+  await request(app)
+    .post(`/api/clans/${clanBId}/members`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: memberB.id });
+
+  // Create a challenge
+  const challenge = await Challenge.create({
+    title: 'Dashboard Challenge One',
+    description: 'Solve me',
+    difficulty: 'Easy',
+    points: 50,
+    category: 'Logic',
+  });
+
+  // Create an accepted submission for memberA (1 solve)
+  await Submission.create({
+    userId: memberA.id,
+    challengeId: challenge._id,
+    code: '// solved',
+    language: 'javascript',
+    status: 'Accepted',
+    submittedAt: new Date(),
+  });
+
+  // Clan Alpha has 1 member, 1 solve (weeklySolved = 1). TARGET_PROBLEMS = 5.
+  // Clan Alpha completion = Math.round((1 / 5) * 100) = 20%.
+  // Clan Beta has 1 member, 0 solves. Clan Beta completion = 0%.
+  // Average completion = Math.round((20 + 0) / 2) = 10%.
+
+  const res = await request(app)
+    .get('/api/dashboard/admin-summary')
+    .set('Authorization', `Bearer ${adminToken}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  
+  const { avgCompletion, clanPerformance, activeClans } = res.body.data;
+  assert.equal(activeClans, 2);
+  assert.equal(avgCompletion, 10);
+
+  assert.equal(clanPerformance.length, 2);
+  const clanAlphaPerf = clanPerformance.find(c => c.name === 'Clan Alpha');
+  const clanBetaPerf = clanPerformance.find(c => c.name === 'Clan Beta');
+
+  assert.ok(clanAlphaPerf);
+  assert.equal(clanAlphaPerf.completion, 20);
+  
+  assert.ok(clanBetaPerf);
+  assert.equal(clanBetaPerf.completion, 0);
+});
+
+

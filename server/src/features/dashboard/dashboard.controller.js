@@ -452,7 +452,7 @@ const getUserProfile = async (req, res, next) => {
 const getAdminDashboardSummary = async (req, res, next) => {
   try {
     const totalMembers = await User.countDocuments();
-    const activeClans = await Clan.countDocuments();
+    const activeClans = await Clan.countDocuments({ status: 'active' });
     
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -468,20 +468,98 @@ const getAdminDashboardSummary = async (req, res, next) => {
     
     const pendingAssignments = await User.countDocuments({ clan: null, role: 'user' });
     
-    const avgCompletion = 68; // Mocked average for now to keep it lightweight
+    // Fetch all active clans and populate their members (we only need _id)
+    const clans = await Clan.find({ status: 'active' }).populate('members', '_id');
     
-    const clans = await Clan.find().limit(4);
-    const clanPerformance = clans.map((c, i) => {
-      const colors = [
-        'from-purple-500 to-indigo-500',
-        'from-blue-500 to-cyan-500',
-        'from-green-500 to-emerald-500',
-        'from-orange-500 to-red-500'
-      ];
+    // Gather all member IDs across all active clans
+    const memberIds = [];
+    clans.forEach(c => {
+      if (c.members) {
+        c.members.forEach(m => {
+          memberIds.push(m._id);
+        });
+      }
+    });
+
+    // Query weekly accepted submissions for those members to count unique challenge solves
+    const weeklySolvedMap = {};
+    if (memberIds.length > 0) {
+      const weeklyStats = await Submission.aggregate([
+        { 
+          $match: { 
+            userId: { $in: memberIds }, 
+            status: 'Accepted', 
+            submittedAt: { $gte: oneWeekAgo } 
+          } 
+        },
+        {
+          $group: {
+            _id: { userId: '$userId', challengeId: '$challengeId' }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.userId',
+            weeklySolved: { $sum: 1 }
+          }
+        }
+      ]);
+      weeklyStats.forEach(stat => {
+        weeklySolvedMap[stat._id.toString()] = stat.weeklySolved;
+      });
+    }
+
+    const TARGET_PROBLEMS = 5;
+    
+    // Compute completion rate for each clan
+    const clanCompletions = clans.map(c => {
+      const members = c.members || [];
+      const memberCount = members.length;
+      if (memberCount === 0) {
+        return {
+          clan: c,
+          completion: 0
+        };
+      }
+      const totalSolved = members.reduce((sum, m) => {
+        const solved = weeklySolvedMap[m._id.toString()] || 0;
+        return sum + Math.min(solved, TARGET_PROBLEMS);
+      }, 0);
+      const totalPossible = memberCount * TARGET_PROBLEMS;
+      const completion = Math.round((totalSolved / totalPossible) * 100);
       return {
-        name: c.name,
-        tag: c.tag,
-        completion: Math.floor(Math.random() * 40) + 50, // Mocked per clan
+        clan: c,
+        completion
+      };
+    });
+
+    // Calculate avgCompletion across all active clans
+    const avgCompletion = clanCompletions.length > 0
+      ? Math.round(clanCompletions.reduce((sum, c) => sum + c.completion, 0) / clanCompletions.length)
+      : 0;
+
+    // Sort by completion rate descending, sub-sort by name/tag, and limit to 4 for performance display
+    const sortedClans = [...clanCompletions].sort((a, b) => {
+      if (b.completion !== a.completion) {
+        return b.completion - a.completion;
+      }
+      return a.clan.name.localeCompare(b.clan.name);
+    });
+    
+    const topClans = sortedClans.slice(0, 4);
+
+    const colors = [
+      'from-purple-500 to-indigo-500',
+      'from-blue-500 to-cyan-500',
+      'from-green-500 to-emerald-500',
+      'from-orange-500 to-red-500'
+    ];
+
+    const clanPerformance = topClans.map((c, i) => {
+      return {
+        name: c.clan.name,
+        tag: c.clan.tag,
+        completion: c.completion,
         color: colors[i % colors.length]
       };
     });
