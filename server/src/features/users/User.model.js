@@ -152,4 +152,7 @@ userSchema.index(
   { unique: true, partialFilterExpression: { regNo: { $type: 'string' } } }
 );
 
+userSchema.index({ clan: 1 });
+userSchema.index({ points: -1, solvedProblems: -1 });
+
 module.exports = mongoose.model('User', userSchema);
