@@ -7,6 +7,35 @@ const { sendSuccess } = require('../../../utils/response');
 const { getUserRank } = require('../../../utils/leaderboard');
 const { getAllBadgesForUser } = require('../badges/badge.service');
 
+const heatmapCache = new Map();
+
+const getCachedHeatmap = async (userId) => {
+  const CACHE_TTL = process.env.NODE_ENV === 'test' ? 0 : 5 * 60 * 1000;
+  const now = Date.now();
+  const cacheKey = userId.toString();
+
+  const cached = heatmapCache.get(cacheKey);
+  if (cached && (now - cached.timestamp < CACHE_TTL)) {
+    return cached.data;
+  }
+
+  const data = await Submission.aggregate([
+    { $match: { userId, status: 'Accepted' } },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  if (CACHE_TTL > 0) {
+    heatmapCache.set(cacheKey, { data, timestamp: now });
+  }
+
+  return data;
+};
+
 const getDashboardSummary = async (req, res, next) => {
   try {
     const [totalChallenges, pending, solvedDistinct] = await Promise.all([
@@ -115,15 +144,7 @@ const getProfileStats = async (req, res, next) => {
       : 0;
 
     // Calculate Heatmap Data
-    const heatmapAggregation = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" } },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
+    const heatmapAggregation = await getCachedHeatmap(userId);
 
     const heatmapMap = {};
     heatmapAggregation.forEach(item => {
@@ -292,15 +313,7 @@ const getUserProfile = async (req, res, next) => {
     difficultyTotals.forEach((d) => { totalsMap[d._id] = d.count; });
 
     // Calculate streak from heatmap
-    const heatmapAggregation = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    const heatmapAggregation = await getCachedHeatmap(userId);
     const heatmapMap = {};
     heatmapAggregation.forEach((item) => { heatmapMap[item._id] = item.count; });
 

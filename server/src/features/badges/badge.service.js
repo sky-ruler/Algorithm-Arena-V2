@@ -3,11 +3,22 @@ const Badge = require('./Badge.model');
 const Submission = require('../submissions/Submission.model');
 const User = require('../users/User.model');
 
+const badgeCache = new Map();
+
 /**
  * Computes all badges with isUnlocked status for a user.
  * Chief-awarded badges (awardedBadgeIds) are auto-unlocked.
  */
 const getAllBadgesForUser = async (userId) => {
+  const CACHE_TTL = process.env.NODE_ENV === 'test' ? 0 : 5 * 60 * 1000;
+  const now = Date.now();
+  const cacheKey = userId.toString();
+
+  const cached = badgeCache.get(cacheKey);
+  if (cached && (now - cached.timestamp < CACHE_TTL)) {
+    return cached.data;
+  }
+
   const [badges, acceptedSubmissions, allSubmissions, userObj] = await Promise.all([
     Badge.find().sort({ rarity: 1, name: 1 }),
     Submission.find({ userId, status: 'Accepted' }).populate('challengeId'),
@@ -226,7 +237,7 @@ const getAllBadgesForUser = async (userId) => {
     'Swift Fingers':      { category: 'Special', progress: Math.min(maxSolvesInOneDay, 10),threshold: 10,  earnDifficulty: 'Hard' },
   };
 
-  return badges.map(badge => {
+  const evaluatedBadges = badges.map(badge => {
     const badgeJson = badge.toJSON();
     // Chief badges unlock via awardedBadgeIds
     if (badge.isChiefBadge) {
@@ -247,6 +258,12 @@ const getAllBadgesForUser = async (userId) => {
     badgeJson.earnDifficulty = badge.earnDifficulty || meta.earnDifficulty;
     return badgeJson;
   });
+
+  if (CACHE_TTL > 0) {
+    badgeCache.set(cacheKey, { data: evaluatedBadges, timestamp: now });
+  }
+
+  return evaluatedBadges;
 };
 
 module.exports = { getAllBadgesForUser };
