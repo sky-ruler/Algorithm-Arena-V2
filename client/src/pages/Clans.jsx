@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -71,7 +72,7 @@ const ClanDashboard = ({ clan, userId, onLeave, readOnly, onBack }) => {
 
         const results = Object.entries(badgeMap).map(([userId, badges]) => {
           const chiefAwarded = (badges || []).filter(b => b.isChiefBadge && b.isUnlocked);
-          return [userId, chiefAwarded.length];
+          return [userId, chiefAwarded];
         });
         return Object.fromEntries(results);
       } catch (err) {
@@ -83,17 +84,7 @@ const ClanDashboard = ({ clan, userId, onLeave, readOnly, onBack }) => {
     staleTime: 60000,
   });
 
-  const starPerformerId = React.useMemo(() => {
-    let maxBadges = 0;
-    let starId = null;
-    for (const [memId, count] of Object.entries(memberBadgeMap)) {
-      if (count > maxBadges) {
-        maxBadges = count;
-        starId = memId;
-      }
-    }
-    return maxBadges > 0 ? starId : null;
-  }, [memberBadgeMap]);
+
 
   return (
     <div className="space-y-6">
@@ -179,59 +170,63 @@ const ClanDashboard = ({ clan, userId, onLeave, readOnly, onBack }) => {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 sm:gap-0 rounded-xl border border-black/20 dark:border-white/20 hover:border-accent/30 transition-all group"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 rounded-xl border border-black/20 dark:border-white/20 hover:border-accent/30 transition-all group"
                   >
                     <div className="flex items-center gap-3 w-full sm:w-auto overflow-hidden">
-                      <div className="w-10 h-10 shrink-0 rounded-full bg-glass-surface flex items-center justify-center font-bold text-accent overflow-hidden">
+                      <div className="w-10 h-10 shrink-0 rounded-full bg-glass-surface flex items-center justify-center font-bold text-accent overflow-hidden border border-white/5 shadow-inner">
                         {member.profilePicture ? (
                           <img src={member.profilePicture} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                         ) : (
                           (member.username?.[0] || member.email?.[0] || 'U').toUpperCase()
                         )}
                       </div>
-                      <div>
-                        <p className="font-bold text-primary flex items-center gap-2 truncate">
-                          <MemberHoverCard userId={member._id} username={member.username}>
-                            <span className="truncate">{member.username || member.email || 'Onboarding Pending'}</span>
-                          </MemberHoverCard>
+                      <div className="min-w-0 flex flex-col justify-center">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-primary truncate">
+                            <MemberHoverCard userId={member._id} username={member.username}>
+                              <span>{member.username || member.email || 'Onboarding Pending'}</span>
+                            </MemberHoverCard>
+                          </p>
                           {member._id === userId && (
-                            <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black">YOU</span>
+                            <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black shrink-0">YOU</span>
                           )}
-                        </p>
+                          {isMemberChief ? (
+                            <span className="text-[9px] bg-yellow-500/15 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded font-bold shrink-0">CHIEF</span>
+                          ) : (
+                            <span className="text-[9px] bg-white/5 border border-white/10 text-secondary px-1.5 py-0.5 rounded font-medium shrink-0">MEMBER</span>
+                          )}
+                        </div>
                         {isMemberChief && (
-                          <p className="text-[10px] text-yellow-400 font-bold flex items-center gap-1">
+                          <p className="text-[10px] text-yellow-400/80 font-semibold flex items-center gap-1 mt-0.5">
                             <FiShield size={10} /> Clan Chief
                           </p>
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
-                      <span className="text-[10px] text-accent/80 font-bold flex items-center gap-1 bg-accent/10 px-2 py-1 rounded-lg">
-                        <FiStar size={10} /> {(member.points || 0).toLocaleString()} XP
-                      </span>
-                      <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1 bg-orange-500/10 px-2 py-1 rounded-lg" title={`${member.streak || 0} Day Streak`}>
-                        🔥 {member.streak || 0}
-                      </span>
-                      {memberBadgeMap[member._id] > 0 && (
-                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 bg-amber-500/10 px-2 py-1 rounded-lg" title="Clan Badges Earned">
-                          <FiAward size={10} /> {memberBadgeMap[member._id]}
+                    
+                    <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto sm:max-w-[60%] shrink-0">
+                      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full">
+                        <span className="text-[10px] text-accent/90 font-bold flex items-center gap-1 bg-accent/10 border border-accent/20 px-2 py-1 rounded-lg">
+                          <FiStar size={10} /> {(member.points || 0).toLocaleString()} XP
                         </span>
-                      )}
-                      {starPerformerId === member._id && (
-                        <span className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black px-2 py-1 rounded-lg font-black flex items-center gap-1 shadow-[0_0_10px_rgba(251,191,36,0.3)]">
-                          ✨ Star Performer
+                        <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-lg" title={`${member.streak || 0} Day Streak`}>
+                          🔥 {member.streak || 0}
                         </span>
-                      )}
-                      {isMemberChief ? (
-                        <span className="text-[10px] bg-yellow-500/15 text-yellow-400 px-2 py-1 rounded-lg font-bold">
-                          CHIEF
-                        </span>
-                      ) : (
-                        <>
-                          <span className="text-[10px] bg-glass-surface text-secondary px-2 py-1 rounded-lg font-medium">
-                            Member
+                        {(memberBadgeMap[member._id] && memberBadgeMap[member._id].length > 0) && (
+                          <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg" title="Total Clan Badges">
+                            <FiAward size={10} /> {memberBadgeMap[member._id].length}
                           </span>
-                        </>
+                        )}
+                      </div>
+                      
+                      {(memberBadgeMap[member._id] && memberBadgeMap[member._id].length > 0) && (
+                        <div className="flex flex-wrap justify-start sm:justify-end gap-1.5 w-full">
+                          {memberBadgeMap[member._id].map(badge => (
+                            <span key={badge._id} className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black px-2 py-1 rounded-md font-black flex items-center gap-1 shadow-[0_0_10px_rgba(251,191,36,0.3)]" title={badge.description || badge.name}>
+                              {badge.icon || <FiAward size={10} />} {badge.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </motion.div>
@@ -391,6 +386,9 @@ const Clans = () => {
   const MotionDiv = motion.div;
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewClanId = searchParams.get('preview');
+  
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
   const [leaving, setLeaving] = useState(false);
@@ -426,6 +424,27 @@ const Clans = () => {
       return res.data.data || [];
     },
   });
+
+  useEffect(() => {
+    if (previewClanId && clansQuery.data) {
+      const clanToPreview = clansQuery.data.find(c => c._id === previewClanId);
+      if (clanToPreview && viewingOtherClan?._id !== previewClanId) {
+        setViewingOtherClan(clanToPreview);
+      }
+    } else if (!previewClanId && viewingOtherClan) {
+      setViewingOtherClan(null);
+    }
+  }, [previewClanId, clansQuery.data, viewingOtherClan]);
+
+  const handleBackFromPreview = () => {
+    if (previewClanId) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('preview');
+      setSearchParams(newParams, { replace: true });
+    } else {
+      setViewingOtherClan(null);
+    }
+  };
 
   const myClan = myClanQuery.data;
 
@@ -553,7 +572,7 @@ const Clans = () => {
               clan={viewingOtherClan}
               userId={user?.id}
               readOnly={true}
-              onBack={() => setViewingOtherClan(null)}
+              onBack={handleBackFromPreview}
             />
           </MotionDiv>
         ) : isBrowsingOthers ? (
@@ -568,7 +587,7 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               userHasClan={true}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => setSearchParams({ preview: clan._id })}
               onBack={() => setIsBrowsingOthers(false)}
             />
           </MotionDiv>
@@ -598,7 +617,7 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               onApply={handleApply}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => setSearchParams({ preview: clan._id })}
             />
           </MotionDiv>
         )}

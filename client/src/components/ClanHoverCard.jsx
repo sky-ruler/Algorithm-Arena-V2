@@ -46,7 +46,7 @@ const ClanIdentityHoverCard = ({ clanId, position }) => {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        navigate(`/clans`);
+        navigate(`/clans?preview=${clanId}`);
       }}
     >
       {clanQ.isLoading ? (
@@ -258,8 +258,8 @@ const ClanHoverCard = ({ clanId, children, className = "" }) => {
   const handleClick = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate(`/clans`);
-  }, [navigate]);
+    navigate(`/clans?preview=${clanId}`);
+  }, [navigate, clanId]);
 
   useEffect(() => {
     if (!showTooltip) return;
