@@ -266,4 +266,8 @@ const getAllBadgesForUser = async (userId) => {
   return evaluatedBadges;
 };
 
-module.exports = { getAllBadgesForUser };
+const clearBadgeCache = (userId) => {
+  badgeCache.delete(userId.toString());
+};
+
+module.exports = { getAllBadgesForUser, clearBadgeCache };

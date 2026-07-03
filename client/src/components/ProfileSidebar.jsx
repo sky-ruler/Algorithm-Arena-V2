@@ -299,13 +299,31 @@ const ProfileSidebar = ({ user, summary, profile, badges }) => {
           {/* Divider */}
           <div className="h-px bg-black/[0.08] dark:bg-white/[0.08]" />
 
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <StatPill icon={FiTarget} value={`${solved}/${total}`} label="Solved" color="text-green-400" />
-            <StatPill icon={FiStar} value={rank !== "—" ? `#${rank}` : "—"} label="Global Rank" color="text-yellow-400" />
-            <StatPill icon={FiZap} value={`${streak}d`} label="Streak" color="text-accent" sublabel={maxStreak > 0 ? `best ${maxStreak}d` : undefined} />
-            <StatPill icon={FiClock} value={pending} label="Pending" color="text-orange-400" />
-            <StatPill icon={FiAward} value={clanBadgeCount} label="Clan Badges" color="text-amber-500" />
+          {/* Stats section */}
+          <div className="flex flex-col gap-2">
+            {/* Global Rank Landscape Bar */}
+            <div className="group relative rounded-xl overflow-hidden border border-black/[0.06] dark:border-white/[0.06] bg-gradient-to-r from-yellow-500/10 via-yellow-400/5 to-transparent p-4 flex items-center justify-between hover:border-yellow-400/30 hover:bg-yellow-500/10 transition-all duration-300">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+                  <FiStar size={18} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-tertiary leading-tight">Global Rank</p>
+                  <p className="text-[10px] text-secondary font-medium mt-0.5">Arena Standing</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-black text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]">{rank !== "—" ? `#${rank}` : "—"}</p>
+              </div>
+            </div>
+
+            {/* Remaining 4 stats in a 2x2 grid */}
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <StatPill icon={FiTarget} value={`${solved}/${total}`} label="Solved" color="text-green-400" />
+              <StatPill icon={FiZap} value={`${streak}d`} label="Streak" color="text-accent" sublabel={maxStreak > 0 ? `best ${maxStreak}d` : undefined} />
+              <StatPill icon={FiClock} value={pending} label="Pending" color="text-orange-400" />
+              <StatPill icon={FiAward} value={clanBadgeCount} label="Clan Badges" color="text-amber-500" />
+            </div>
           </div>
 
           {/* Divider */}

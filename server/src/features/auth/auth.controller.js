@@ -244,7 +244,8 @@ const googleAuth = async (req, res, next) => {
 // @access  Private
 const claimUsername = async (req, res, next) => {
   try {
-    const { username, name, regNo, branch, year, section } = req.body;
+    let { username, name, regNo, branch, year, section } = req.body;
+    if (username) username = username.toLowerCase();
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -378,7 +379,7 @@ const googleLogin = async (req, res, next) => {
         .slice(0, 15);
       if (baseUsername.length < 3) baseUsername = 'user_' + baseUsername;
 
-      let username = baseUsername;
+      let username = baseUsername.toLowerCase();
       let suffix = 1;
       while (await User.findOne({ username })) {
         username = `${baseUsername}${suffix}`;

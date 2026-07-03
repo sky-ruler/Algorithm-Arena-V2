@@ -225,7 +225,7 @@ const ClaimUsername = () => {
                   <input
                     type="text"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value.trim())}
+                    onChange={(e) => setUsername(e.target.value.trim().toLowerCase())}
                     className="w-full bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-12 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-tertiary"
                     placeholder="e.g. Neo_42"
                     maxLength={30}

@@ -261,7 +261,7 @@ const getUserProfile = async (req, res, next) => {
     if (req.params.userId) {
       user = await User.findById(req.params.userId).populate('clan', 'name tag').populate('featuredBadge');
     } else if (req.params.username) {
-      user = await User.findOne({ username: req.params.username }).populate('clan', 'name tag').populate('featuredBadge');
+      user = await User.findOne({ username: { $regex: new RegExp(`^${req.params.username}$`, 'i') } }).populate('clan', 'name tag').populate('featuredBadge');
     }
 
     if (!user) {
