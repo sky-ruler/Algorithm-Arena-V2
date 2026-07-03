@@ -1,4 +1,4 @@
-const { getAllBadgesForUser } = require('./badge.service');
+const { getAllBadgesForUser, clearBadgeCache } = require('./badge.service');
 const Badge = require('./Badge.model');
 const User = require('../users/User.model');
 
@@ -47,12 +47,16 @@ exports.awardBadge = async (req, res, next) => {
     if (!member) return res.status(404).json({ success: false, message: 'User not found.' });
 
     if (chief.role !== 'admin' && chief.role !== 'superAdmin') {
+      if (userId.toString() === chief._id.toString()) {
+        return res.status(403).json({ success: false, message: 'You cannot award a badge to yourself.' });
+      }
       if (!chief.clan || !member.clan || chief.clan.toString() !== member.clan.toString()) {
         return res.status(403).json({ success: false, message: 'You can only award badges to members of your own clan.' });
       }
     }
 
     await User.findByIdAndUpdate(userId, { $addToSet: { awardedBadgeIds: badgeId } });
+    clearBadgeCache(userId);
     res.status(200).json({ success: true, message: `Badge "${badge.name}" awarded successfully.` });
   } catch (error) {
     next(error);
@@ -82,6 +86,7 @@ exports.revokeBadge = async (req, res, next) => {
     }
 
     await User.findByIdAndUpdate(userId, { $pull: { awardedBadgeIds: badgeId } });
+    clearBadgeCache(userId);
     res.status(200).json({ success: true, message: `Badge "${badge.name}" revoked.` });
   } catch (error) {
     next(error);

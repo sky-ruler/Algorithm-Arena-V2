@@ -220,7 +220,7 @@ const getLeaderboard = async (req, res, next) => {
           if (u.points === prev.points && u.solvedProblems === prev.solvedProblems) {
             rank = topThreeMapped[i - 1].rank;
           } else {
-            rank = i + 1;
+            rank = topThreeMapped[i - 1].rank + 1;
           }
         }
         topThreeMapped.push({
@@ -234,18 +234,19 @@ const getLeaderboard = async (req, res, next) => {
       });
       topThree = topThreeMapped;
 
-      // Assign ranks for the current page's slice using standard competitive ranking
+      // Assign ranks for the current page's slice using dense ranking
       let rankOfFirst = 1;
       if (skip > 0 && users.length > 0) {
         const firstUser = users[0];
-        const countHigher = await User.countDocuments({
-          ...filter,
-          $or: [
+        const distinctHigherScores = await User.aggregate([
+          { $match: { ...filter, $or: [
             { points: { $gt: firstUser.points } },
             { points: firstUser.points, solvedProblems: { $gt: firstUser.solvedProblems } }
-          ]
-        });
-        rankOfFirst = countHigher + 1;
+          ]}},
+          { $group: { _id: { p: "$points", s: "$solvedProblems" } } },
+          { $count: "count" }
+        ]);
+        rankOfFirst = (distinctHigherScores[0]?.count || 0) + 1;
       }
 
       users.forEach((u, i) => {
@@ -257,7 +258,7 @@ const getLeaderboard = async (req, res, next) => {
           if (u.points === prev.points && u.solvedProblems === prev.solvedProblems) {
             rank = data[i - 1].rank;
           } else {
-            rank = skip + i + 1;
+            rank = data[i - 1].rank + 1;
           }
         }
         data.push({
@@ -338,20 +339,16 @@ const getLeaderboard = async (req, res, next) => {
 
       result.sort((a, b) => b.totalPoints - a.totalPoints || b.solvedCount - a.solvedCount);
 
-      // Apply custom tie-breaker logic in memory
+      // Apply dense ranking in memory
       let currentRank = 1;
       result.forEach((u, i) => {
-        if (i < 3) {
-          u.rank = i + 1;
-          currentRank = i + 1;
-        } else {
+        if (i > 0) {
           const prev = result[i - 1];
           if (u.totalPoints !== prev.totalPoints || u.solvedCount !== prev.solvedCount) {
             currentRank++;
           }
-          u.rank = Math.max(4, currentRank);
-          currentRank = u.rank;
         }
+        u.rank = currentRank;
       });
 
       total = result.length;
@@ -589,7 +586,7 @@ const getSubmissionsByUsername = async (req, res, next) => {
   try {
     const { username } = req.params;
     const User = require('../users/User.model');
-    const targetUser = await User.findOne({ username });
+    const targetUser = await User.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
     if (!targetUser) {
       res.status(404);
       throw new Error('User not found');

@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiAward, FiX, FiCheck, FiSearch, FiUser } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/useAuth';
 
 const RARITY_CONFIG = {
   COMMON:    { text: 'text-slate-400',  bg: 'bg-slate-500/10  border-slate-500/20' },
@@ -32,28 +33,28 @@ const AwardBadgeModal = ({ member, chiefBadges, onClose, onAward }) => {
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative w-full max-w-md bg-[#0f1115] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-md bg-white dark:bg-[#0f1115] border border-glass-border dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/8">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-glass-border dark:border-white/8">
           <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
             <FiAward className="text-amber-400" size={16} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white">Award Chief Badge</p>
-            <p className="text-xs text-white/40 truncate">
-              To: <span className="text-white/60">{member.name || member.username}</span>
+            <p className="text-sm font-bold text-primary dark:text-white">Award Chief Badge</p>
+            <p className="text-xs text-tertiary dark:text-white/40 truncate">
+              To: <span className="text-secondary dark:text-white/60">{member.name || member.username}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors p-1">
+          <button onClick={onClose} className="text-secondary dark:text-white/30 hover:text-primary dark:hover:text-white/70 transition-colors p-1">
             <FiX size={16} />
           </button>
         </div>
 
         {/* Badge Picker */}
         <div className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-white/40 uppercase tracking-widest">Select a Badge</p>
+          <p className="text-xs font-semibold text-tertiary dark:text-white/40 uppercase tracking-widest">Select a Badge</p>
           <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
             {chiefBadges.map(badge => {
               const r = RARITY_CONFIG[badge.rarity] || RARITY_CONFIG.COMMON;
@@ -70,8 +71,8 @@ const AwardBadgeModal = ({ member, chiefBadges, onClose, onAward }) => {
                 >
                   <span className="text-2xl">{badge.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white">{badge.name}</p>
-                    <p className="text-xs text-white/40 truncate">{badge.description}</p>
+                    <p className="text-sm font-bold text-primary dark:text-white">{badge.name}</p>
+                    <p className="text-xs text-tertiary dark:text-white/40 truncate">{badge.description}</p>
                   </div>
                   <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border shrink-0 ${r.bg} ${r.text}`}>
                     {badge.rarity}
@@ -87,7 +88,7 @@ const AwardBadgeModal = ({ member, chiefBadges, onClose, onAward }) => {
         <div className="flex gap-2 px-5 pb-5">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-white/5 border border-white/8 text-white/60 hover:bg-white/10 transition-colors"
+            className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-gray-100 dark:bg-white/5 border border-glass-border dark:border-white/8 text-secondary hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
           >
             Cancel
           </button>
@@ -107,6 +108,7 @@ const AwardBadgeModal = ({ member, chiefBadges, onClose, onAward }) => {
 // ── Main Component ────────────────────────────────────────────────────────────
 const ChiefBadgesTab = ({ clan }) => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [awardingMember, setAwardingMember] = useState(null);
 
@@ -121,7 +123,7 @@ const ChiefBadgesTab = ({ clan }) => {
 
   // Fetch member badges
   const { data: memberBadgeMap = {}, isLoading } = useQuery({
-    queryKey: ['member-badges', clan?._id],
+    queryKey: ['chief-member-badges', clan?._id],
     queryFn: async () => {
       if (!clan?.members?.length) return {};
       try {
@@ -148,6 +150,7 @@ const ChiefBadgesTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Badge awarded successfully! 🏆');
+      queryClient.invalidateQueries({ queryKey: ['chief-member-badges'] });
       queryClient.invalidateQueries({ queryKey: ['member-badges'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to award badge.'),
@@ -159,6 +162,7 @@ const ChiefBadgesTab = ({ clan }) => {
     },
     onSuccess: () => {
       toast.success('Badge revoked.');
+      queryClient.invalidateQueries({ queryKey: ['chief-member-badges'] });
       queryClient.invalidateQueries({ queryKey: ['member-badges'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to revoke badge.'),
@@ -175,16 +179,16 @@ const ChiefBadgesTab = ({ clan }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <h3 className="text-base font-bold text-primary dark:text-white flex items-center gap-2">
             <FiAward className="text-amber-400" />
             Award Chief Badges
           </h3>
-          <p className="text-xs text-white/40 mt-0.5">
+          <p className="text-xs text-tertiary dark:text-white/40 mt-0.5">
             Recognize outstanding members with honorary badges. These badges appear permanently on their profile.
           </p>
         </div>
         <div className="relative">
-          <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+          <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary dark:text-white/30" />
           <input
             className="field-input pl-8 py-2 text-xs h-9 w-52"
             placeholder="Search members…"
@@ -199,7 +203,7 @@ const ChiefBadgesTab = ({ clan }) => {
         {chiefBadges.map(b => (
           <div key={b._id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/8 border border-amber-500/15 text-xs">
             <span>{b.icon}</span>
-            <span className="text-amber-300/80 font-semibold">{b.name}</span>
+            <span className="text-amber-600 dark:text-amber-300/80 font-semibold">{b.name}</span>
           </div>
         ))}
       </div>
@@ -216,7 +220,7 @@ const ChiefBadgesTab = ({ clan }) => {
             return (
               <div
                 key={member._id}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/8 hover:bg-white/[0.05] transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-white/50 border border-gray-200 hover:bg-white/80 dark:bg-white/[0.03] dark:border-white/8 dark:hover:bg-white/[0.05] transition-colors shadow-sm dark:shadow-none"
               >
                 {/* Avatar */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -227,20 +231,20 @@ const ChiefBadgesTab = ({ clan }) => {
                     }
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{member.name || member.username}</p>
-                    <p className="text-xs text-white/40">@{member.username}</p>
+                    <p className="text-sm font-bold text-primary dark:text-white truncate">{member.name || member.username}</p>
+                    <p className="text-xs text-tertiary dark:text-white/40">@{member.username}</p>
                   </div>
                 </div>
 
                 {/* Awarded badges */}
                 <div className="flex flex-wrap gap-1.5 flex-1">
                   {awarded.length === 0 && (
-                    <span className="text-xs text-white/20 italic">No chief badges yet</span>
+                    <span className="text-xs text-tertiary/70 dark:text-white/20 italic">No chief badges yet</span>
                   )}
                   {awarded.map(badge => (
                     <div key={badge._id} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 group">
                       <span className="text-sm">{badge.icon}</span>
-                      <span className="text-xs text-amber-300 font-semibold">{badge.name}</span>
+                      <span className="text-xs text-amber-600 dark:text-amber-300 font-semibold">{badge.name}</span>
                       <button
                         onClick={() => revokeMutation.mutate({ userId: member._id, badgeId: badge._id })}
                         className="ml-0.5 text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
@@ -253,19 +257,26 @@ const ChiefBadgesTab = ({ clan }) => {
                 </div>
 
                 {/* Award button */}
-                <button
-                  onClick={() => setAwardingMember(member)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/25 hover:bg-amber-500/25 transition-colors"
-                >
-                  <FiAward size={12} />
-                  Award Badge
-                </button>
+                {member._id !== user?._id ? (
+                  <button
+                    onClick={() => setAwardingMember(member)}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 hover:bg-amber-500/25 transition-colors"
+                  >
+                    <FiAward size={12} />
+                    Award Badge
+                  </button>
+                ) : (
+                  <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-500/10 text-tertiary border border-gray-500/20 cursor-not-allowed">
+                    <FiAward size={12} />
+                    Cannot award self
+                  </div>
+                )}
               </div>
             );
           })}
 
           {members.length === 0 && (
-            <div className="text-center py-12 text-white/30">
+            <div className="text-center py-12 text-tertiary dark:text-white/30">
               <FiUser size={32} className="mx-auto mb-2 opacity-40" />
               <p className="text-sm">No members found.</p>
             </div>
