@@ -44,8 +44,8 @@ const rejectArchivedClanMutation = (res, clan) => {
 
 const isTransactionUnsupported = (error) => {
   const message = (error && error.message) || '';
-  return message.includes('Transaction') && 
-         (message.includes('replica set') || message.includes('mongos') || message.includes('supported'));
+  return message.includes('Transaction') &&
+    (message.includes('replica set') || message.includes('mongos') || message.includes('supported'));
 };
 
 const runWithOptionalTransaction = async (work) => {
@@ -121,7 +121,7 @@ const getMyClan = async (req, res, next) => {
     }
 
     const clan = clanDoc.toObject();
-    
+
     // Dynamically calculate totalPoints based on members' accepted submissions
     const memberIds = clan.members.map(m => m._id);
     if (memberIds.length > 0) {
@@ -177,7 +177,7 @@ const getClans = async (req, res, next) => {
     // aggregation to get per-clan points totals — eliminates N+1 queries.
     const allMemberIds = clansDocs.flatMap((c) => c.members.map((m) => m._id));
 
-    
+
 
     const clans = clansDocs.map((clanDoc) => {
       const clan = clanDoc.toObject();
@@ -364,28 +364,28 @@ const getClanLeaderboard = async (req, res, next) => {
     // Single aggregation across all members — group by userId
     const userStats = allMemberIds.length > 0
       ? await Submission.aggregate([
-          { $match: { userId: { $in: allMemberIds }, status: 'Accepted', ...dateMatch } },
-          {
-            $lookup: {
-              from: 'challenges',
-              localField: 'challengeId',
-              foreignField: '_id',
-              as: 'challenge',
-            },
+        { $match: { userId: { $in: allMemberIds }, status: 'Accepted', ...dateMatch } },
+        {
+          $lookup: {
+            from: 'challenges',
+            localField: 'challengeId',
+            foreignField: '_id',
+            as: 'challenge',
           },
-          { $unwind: '$challenge' },
-          {
-            $group: {
-              _id: '$userId',
-              solvedCount: { $sum: 1 }
-            },
+        },
+        { $unwind: '$challenge' },
+        {
+          $group: {
+            _id: '$userId',
+            solvedCount: { $sum: 1 }
           },
-        ])
+        },
+      ])
       : [];
 
     // Get the points for these members within the time window from XpLog
     const XpLog = require('../users/XpLog.model');
-    
+
     let xpDateMatch = {};
     if (window === '7d') {
       xpDateMatch = { createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
@@ -396,16 +396,16 @@ const getClanLeaderboard = async (req, res, next) => {
 
     const xpStats = allMemberIds.length > 0
       ? await XpLog.aggregate([
-          { $match: { userId: { $in: allMemberIds }, ...xpDateMatch } },
-          {
-            $group: {
-              _id: '$userId',
-              totalPoints: { $sum: '$amount' }
-            }
+        { $match: { userId: { $in: allMemberIds }, ...xpDateMatch } },
+        {
+          $group: {
+            _id: '$userId',
+            totalPoints: { $sum: '$amount' }
           }
-        ])
+        }
+      ])
       : [];
-      
+
     const windowPointsMap = {};
     xpStats.forEach(x => {
       windowPointsMap[x._id.toString()] = x.totalPoints || 0;
@@ -922,7 +922,7 @@ const removeChief = async (req, res, next) => {
       }
 
       await reconcileChiefRoleForUser(previousChiefId, { session });
-      
+
       return null;
     });
 
