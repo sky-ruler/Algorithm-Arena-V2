@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -19,6 +20,7 @@ import {
   FiAlertTriangle,
   FiGrid,
   FiList,
+  FiArrowLeft,
 } from 'react-icons/fi';
 import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
@@ -389,6 +391,12 @@ const ClanBrowser = ({ clans, loading, userId, onApply, onViewClan, userHasClan,
    ═══════════════════════════════════════════════════════════════ */
 const Clans = () => {
   const MotionDiv = motion.div;
+  const navigate = useNavigate();
+  const { clanId: paramClanId } = useParams();
+  const [searchParams] = useSearchParams();
+  const queryClanId = searchParams.get('id') || searchParams.get('clanId') || searchParams.get('view');
+  const targetClanId = paramClanId || queryClanId;
+
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -428,6 +436,28 @@ const Clans = () => {
   });
 
   const myClan = myClanQuery.data;
+
+  const targetClanQuery = useQuery({
+    queryKey: ['clan-detail', targetClanId],
+    queryFn: async () => {
+      if (!targetClanId) return null;
+      try {
+        const res = await api.get(`/api/clans/${targetClanId}`);
+        return res.data.data || null;
+      } catch (err) {
+        if (err.response?.status === 404) return null;
+        throw err;
+      }
+    },
+    enabled: !!targetClanId,
+  });
+
+  const isMyClanTarget = myClan && (myClan._id === targetClanId || myClan.tag === targetClanId);
+  const fetchedTargetClan = targetClanId && !isMyClanTarget
+    ? ((clansQuery.data || []).find(c => c._id === targetClanId || c.tag === targetClanId) || targetClanQuery.data)
+    : null;
+  const activeOtherClan = viewingOtherClan || fetchedTargetClan;
+  const isLoadingTarget = targetClanId && !isMyClanTarget && !activeOtherClan && (targetClanQuery.isLoading || clansQuery.isLoading || myClanQuery.isLoading);
 
   // Notices removed upstream
 
@@ -530,31 +560,44 @@ const Clans = () => {
         showBack={true}
         backUrl="/dashboard"
         actions={
-          myClan && !isBrowsingOthers && !viewingOtherClan && (
+          myClan && !isBrowsingOthers && !activeOtherClan ? (
             <button
               onClick={() => setIsBrowsingOthers(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-black/20 dark:border-white/20 text-accent hover:bg-accent/10 transition-all text-sm font-semibold"
             >
               <FiSearch size={14} /> Browse Other Clans
             </button>
-          )
+          ) : myClan && (isBrowsingOthers || activeOtherClan) ? (
+            <button
+              onClick={() => {
+                setIsBrowsingOthers(false);
+                setViewingOtherClan(null);
+                if (targetClanId) navigate('/clans');
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-black/20 dark:border-white/20 text-accent hover:bg-accent/10 transition-all text-sm font-semibold"
+            >
+              <FiArrowLeft size={14} /> Return to Clan
+            </button>
+          ) : null
         }
       />
 
       <AnimatePresence mode="wait">
-        {viewingOtherClan ? (
+        {isLoadingTarget ? (
           <MotionDiv
-            key="preview"
+            key="loading-target"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            className="space-y-6 animate-pulse"
           >
-            <ClanDashboard
-              clan={viewingOtherClan}
-              userId={user?.id}
-              readOnly={true}
-              onBack={() => setViewingOtherClan(null)}
-            />
+            <div className="h-40 rounded-3xl bg-black/[0.04] dark:bg-white/[0.04] border border-black/5 dark:border-white/5" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-24 rounded-2xl bg-black/[0.04] dark:bg-white/[0.04]" />
+              ))}
+            </div>
+            <div className="h-64 rounded-3xl bg-black/[0.04] dark:bg-white/[0.04]" />
           </MotionDiv>
         ) : isBrowsingOthers ? (
           <MotionDiv
@@ -568,9 +611,51 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               userHasClan={true}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => {
+                setIsBrowsingOthers(false);
+                setViewingOtherClan(clan);
+                navigate(`/clans/${clan._id}`);
+              }}
               onBack={() => setIsBrowsingOthers(false)}
             />
+          </MotionDiv>
+        ) : activeOtherClan ? (
+          <MotionDiv
+            key="preview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <ClanDashboard
+              clan={activeOtherClan}
+              userId={user?.id}
+              readOnly={true}
+              onBack={() => {
+                setViewingOtherClan(null);
+                if (targetClanId) {
+                  navigate('/clans');
+                }
+              }}
+            />
+          </MotionDiv>
+        ) : targetClanId && !isMyClanTarget && !activeOtherClan ? (
+          <MotionDiv
+            key="not-found"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="p-12 text-center"
+          >
+            <EmptyState
+              title="Clan Not Found"
+              description="The clan you are looking for does not exist or has been removed."
+            />
+            <button
+              onClick={() => navigate('/clans')}
+              className="btn-primary mt-4 px-6 py-2 text-sm"
+            >
+              Back to Clans
+            </button>
           </MotionDiv>
         ) : myClan ? (
           <MotionDiv
@@ -598,7 +683,10 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               onApply={handleApply}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => {
+                setViewingOtherClan(clan);
+                navigate(`/clans/${clan._id}`);
+              }}
             />
           </MotionDiv>
         )}

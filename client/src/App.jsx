@@ -75,6 +75,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/clans" element={<Clans />} />
+            <Route path="/clans/:clanId" element={<Clans />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/badges" element={<Navigate to="/badges" replace />} />
             <Route path="/profile/:username" element={<Profile />} />
