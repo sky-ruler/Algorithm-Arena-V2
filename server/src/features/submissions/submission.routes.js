@@ -32,7 +32,7 @@ const runLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return req.user ? req.user.id : req.ip;
+    return req.user ? req.user.id : 'anonymous';
   },
   message: { success: false, message: 'Too many code execution requests. Please try again after a minute.' },
 });
