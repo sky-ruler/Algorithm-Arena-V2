@@ -65,7 +65,7 @@ const getUserRank = async (userId) => {
     newRanks.set(u._id.toString(), displayRank);
   });
 
-  if (CACHE_TTL > 0) {
+  if (CACHE_TTL > 0 && newRanks.size <= 10000) {
     cachedRanks = newRanks;
     cacheTimestamp = now;
   }
