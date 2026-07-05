@@ -132,7 +132,7 @@ const Missions = () => {
         : sub.challengeId;
       if (!cid) return;
       const cidStr = cid.toString();
-      
+
       // We iterate newest to oldest. If not in map, it's the newest status.
       // If it's already in map, we only overwrite if the older submission was 'Accepted'.
       if (!map[cidStr]) {
@@ -140,7 +140,7 @@ const Missions = () => {
       } else if (sub.status === 'Accepted') {
         map[cidStr] = 'Accepted';
       }
-      
+
       const titleKey = sub.challengeId?.title?.trim().toLowerCase();
       if (titleKey) {
         if (!map[titleKey]) {
@@ -149,6 +149,7 @@ const Missions = () => {
           map[titleKey] = 'Accepted';
         }
       }
+      map[challengeIdStr][sub.status] = true;
     });
     return map;
   }, [submissionsQuery.data]);
@@ -344,7 +345,7 @@ const Missions = () => {
         // Sort by question-set deadline (earliest upcoming first, then past, then no-deadline last)
         const dlA = a.questionSetId?.deadline ? new Date(a.questionSetId.deadline).getTime() : Infinity;
         const dlB = b.questionSetId?.deadline ? new Date(b.questionSetId.deadline).getTime() : Infinity;
-        
+
         const isPastA = dlA < now;
         const isPastB = dlB < now;
 
@@ -533,8 +534,8 @@ const Missions = () => {
             {['All', 'Accepted', 'Pending', 'Rejected'].map(st => {
               const label =
                 st === 'Accepted' ? 'Solved' :
-                st === 'Pending' ? 'Pending Review' :
-                st === 'Rejected' ? 'Rejected' : 'Remaining';
+                  st === 'Pending' ? 'Pending Review' :
+                    st === 'Rejected' ? 'Rejected' : 'Remaining';
               return (
                 <button
                   key={st}
@@ -591,15 +592,15 @@ const Missions = () => {
           <EmptyState
             title={
               filters.status === 'Accepted' ? "No solved missions yet" :
-              filters.status === 'Pending' ? "No pending reviews" :
-              filters.status === 'Rejected' ? "No rejected missions" :
-              "You have attempted all the questions!"
+                filters.status === 'Pending' ? "No pending reviews" :
+                  filters.status === 'Rejected' ? "No rejected missions" :
+                    "You have attempted all the questions!"
             }
             description={
               filters.status === 'Accepted' ? "Start solving challenges to see them here." :
-              filters.status === 'Pending' ? "You don't have any challenges waiting for review." :
-              filters.status === 'Rejected' ? "Great job! You don't have any rejected solutions." :
-              "No missions found for the current filters. Great job pushing your limits!"
+                filters.status === 'Pending' ? "You don't have any challenges waiting for review." :
+                  filters.status === 'Rejected' ? "Great job! You don't have any rejected solutions." :
+                    "No missions found for the current filters. Great job pushing your limits!"
             }
             actionLabel="Reset Filters"
             onAction={() =>
@@ -616,122 +617,120 @@ const Missions = () => {
           />
         ) : (
           <>
-          <div className="space-y-12">
-            {Object.entries(groupedChallenges).map(([groupName, groupItems]) => (
-              <div key={groupName} className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <h2 className="text-xl font-black text-primary uppercase tracking-widest">{groupName}</h2>
-                  <div className="h-[1px] flex-1 bg-glass-border/30" />
-                  <span className="text-xs text-tertiary font-bold">{groupItems.length} Missions</span>
-                </div>
+            <div className="space-y-12">
+              {Object.entries(groupedChallenges).map(([groupName, groupItems]) => (
+                <div key={groupName} className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <h2 className="text-xl font-black text-primary uppercase tracking-widest">{groupName}</h2>
+                    <div className="h-[1px] flex-1 bg-glass-border/30" />
+                    <span className="text-xs text-tertiary font-bold">{groupItems.length} Missions</span>
+                  </div>
 
-                {viewMode === "grid" ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {groupItems.map((challenge, index) => (
-                      <MotionBlock
-                        key={challenge._id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.03 }}
-                      >
-                        <Link to={`/challenge/${challenge._id}`} className="group block h-full">
-                          <ChallengeCard
-                            className="h-full p-6 !rounded-2xl"
-                            innerClassName="flex flex-col gap-3 h-full justify-between w-full"
-                            difficultyColor={getRGB(challenge.difficulty)}
-                          >
-                            <div className="flex justify-between items-start mb-4">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
-                                challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
-                              }`}>
-                                {challenge.difficulty}
-                              </span>
+                  {viewMode === "grid" ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {groupItems.map((challenge, index) => (
+                        <MotionBlock
+                          key={challenge._id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                        >
+                          <Link to={`/challenge/${challenge._id}`} className="group block h-full">
+                            <ChallengeCard
+                              className="h-full p-6 !rounded-2xl"
+                              innerClassName="flex flex-col gap-3 h-full justify-between w-full"
+                              difficultyColor={getRGB(challenge.difficulty)}
+                            >
+                              <div className="flex justify-between items-start mb-4">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
+                                    challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
+                                  }`}>
+                                  {challenge.difficulty}
+                                </span>
 
-                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const badge = getBadge(challenge._id);
+                                    return badge && (
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
+                                    );
+                                  })()}
+                                  <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start justify-between gap-3 mt-2">
+                                <h2 className="text-xl font-bold group-hover:text-accent transition-colors line-clamp-2 flex-1 font-h2">{challenge.title}</h2>
+                                {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
+                                  <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-1">New</span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-auto pt-4">
+                                {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
+                                  <span key={idx} className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
+                                ))}
+                                {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
+                                  <span className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
+                                )}
+                              </div>
+                            </ChallengeCard>
+                          </Link>
+                        </MotionBlock>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {groupItems.map((challenge, index) => (
+                        <MotionBlock
+                          key={challenge._id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                        >
+                          <Link to={`/challenge/${challenge._id}`} className="group block">
+                            <ChallengeCard
+                              className="p-4 sm:p-6 !rounded-2xl"
+                              innerClassName="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full h-full"
+                              difficultyColor={getRGB(challenge.difficulty)}
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-start gap-3">
+                                  <h2 className="text-lg font-bold group-hover:text-accent transition-colors line-clamp-1 flex-1 font-h2">{challenge.title}</h2>
+                                  {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
+                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-0.5">New</span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
+                                    <span key={idx} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
+                                  ))}
+                                  {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                                 {(() => {
                                   const badge = getBadge(challenge._id);
                                   return badge && (
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls} hidden sm:block`}>{badge.label}</span>
                                   );
                                 })()}
-                                <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
+                                    challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
+                                  }`}>
+                                  {challenge.difficulty}
+                                </span>
+                                <span className="text-secondary text-sm min-w-[60px] text-right font-bold">{challenge.points} XP</span>
                               </div>
-                            </div>
-                            <div className="flex items-start justify-between gap-3 mt-2">
-                              <h2 className="text-xl font-bold group-hover:text-accent transition-colors line-clamp-2 flex-1 font-h2">{challenge.title}</h2>
-                              {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-1">New</span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-2 mt-auto pt-4">
-                              {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
-                                <span key={idx} className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
-                              ))}
-                              {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
-                                <span className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
-                              )}
-                            </div>
-                          </ChallengeCard>
-                        </Link>
-                      </MotionBlock>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {groupItems.map((challenge, index) => (
-                      <MotionBlock
-                        key={challenge._id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.03 }}
-                      >
-                        <Link to={`/challenge/${challenge._id}`} className="group block">
-                          <ChallengeCard
-                            className="p-4 sm:p-6 !rounded-2xl"
-                            innerClassName="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full h-full"
-                            difficultyColor={getRGB(challenge.difficulty)}
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-start gap-3">
-                                <h2 className="text-lg font-bold group-hover:text-accent transition-colors line-clamp-1 flex-1 font-h2">{challenge.title}</h2>
-                                {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-0.5">New</span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
-                                  <span key={idx} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
-                                ))}
-                                {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                              {(() => {
-                                const badge = getBadge(challenge._id);
-                                return badge && (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls} hidden sm:block`}>{badge.label}</span>
-                                );
-                              })()}
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
-                                challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
-                              }`}>
-                                {challenge.difficulty}
-                              </span>
-                              <span className="text-secondary text-sm min-w-[60px] text-right font-bold">{challenge.points} XP</span>
-                            </div>
-                          </ChallengeCard>
-                        </Link>
-                      </MotionBlock>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                            </ChallengeCard>
+                          </Link>
+                        </MotionBlock>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
             {meta.totalPages > 1 && (
               <div className="flex items-center justify-between border-t border-glass-border/40 pt-6 mt-8">
