@@ -80,8 +80,12 @@ export const AuthProvider = ({ children }) => {
       }
 
       return normalizedUser;
-    } catch {
-      clearSession(false, false); // /me failed — the interceptor will attempt refresh first
+      
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        clearSession(false, false); // /me failed with auth error — clear session
+      }
       return null;
     } finally {
       setLoading(false);
@@ -105,7 +109,6 @@ export const AuthProvider = ({ children }) => {
           })
           .catch(() => {
             // If proactive refresh fails, the next API call will trigger the
-            // reactive interceptor path — no need to log out immediately.
           });
       }
     }, REFRESH_INTERVAL_MS);
@@ -140,7 +143,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('user', JSON.stringify(normalizedUser));
     setUser(normalizedUser);
     sessionExpiredToastShown.current = false;
-
+    
     // Show daily XP bonus toast if awarded
     if (payload?.dailyXpAwarded) {
       setTimeout(() => {
@@ -157,6 +160,7 @@ export const AuthProvider = ({ children }) => {
             secondary: '#fff',
           },
         });
+        
       }, 800);
     }
   }, []);

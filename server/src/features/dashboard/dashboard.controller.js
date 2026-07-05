@@ -30,6 +30,7 @@ const getCachedHeatmap = async (userId) => {
   ]);
 
   if (CACHE_TTL > 0) {
+    if (heatmapCache.size > 5000) heatmapCache.clear();
     heatmapCache.set(cacheKey, { data, timestamp: now });
   }
 

@@ -260,6 +260,7 @@ const getAllBadgesForUser = async (userId) => {
   });
 
   if (CACHE_TTL > 0) {
+    if (badgeCache.size > 5000) badgeCache.clear();
     badgeCache.set(cacheKey, { data: evaluatedBadges, timestamp: now });
   }
 
