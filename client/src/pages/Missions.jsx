@@ -149,7 +149,6 @@ const Missions = () => {
           map[titleKey] = 'Accepted';
         }
       }
-      map[challengeIdStr][sub.status] = true;
     });
     return map;
   }, [submissionsQuery.data]);
