@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -58,6 +59,32 @@ const ClanDashboard = ({ clan, userId, onLeave, readOnly, onBack }) => {
   const requests = clan.requests || [];
   const isArchived = clan.status === 'archived';
   const [viewMode, setViewMode] = useState('grid');
+
+  // Fetch member badges to determine Star Performer
+  const { data: memberBadgeMap = {} } = useQuery({
+    queryKey: ['member-badges', clan?._id],
+    queryFn: async () => {
+      if (!members.length) return {};
+      try {
+        const userIds = members.map(m => m._id);
+        const res = await api.post('/api/badges/batch', { userIds });
+        const badgeMap = res.data?.data || {};
+
+        const results = Object.entries(badgeMap).map(([userId, badges]) => {
+          const chiefAwarded = (badges || []).filter(b => b.isChiefBadge && b.isUnlocked);
+          return [userId, chiefAwarded];
+        });
+        return Object.fromEntries(results);
+      } catch (err) {
+        console.error('Failed to batch fetch badges', err);
+        return {};
+      }
+    },
+    enabled: !!members.length,
+    staleTime: 60000,
+  });
+
+
 
   return (
     <div className="space-y-6">
@@ -143,49 +170,63 @@ const ClanDashboard = ({ clan, userId, onLeave, readOnly, onBack }) => {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
-                    className="flex items-center justify-between p-4 rounded-xl border border-black/20  dark:border-white/20 hover:border-accent/30 transition-all group"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 rounded-xl border border-black/20 dark:border-white/20 hover:border-accent/30 transition-all group"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-glass-surface flex items-center justify-center font-bold text-accent overflow-hidden">
+                    <div className="flex items-center gap-3 w-full sm:w-auto overflow-hidden">
+                      <div className="w-10 h-10 shrink-0 rounded-full bg-glass-surface flex items-center justify-center font-bold text-accent overflow-hidden border border-white/5 shadow-inner">
                         {member.profilePicture ? (
                           <img src={member.profilePicture} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                         ) : (
                           (member.username?.[0] || member.email?.[0] || 'U').toUpperCase()
                         )}
                       </div>
-                      <div>
-                        <p className="font-bold text-primary flex items-center gap-2">
-                          <MemberHoverCard userId={member._id} username={member.username}>
-                            {member.username || member.email || 'Onboarding Pending'}
-                          </MemberHoverCard>
+                      <div className="min-w-0 flex flex-col justify-center">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-primary truncate">
+                            <MemberHoverCard userId={member._id} username={member.username}>
+                              <span>{member.username || member.email || 'Onboarding Pending'}</span>
+                            </MemberHoverCard>
+                          </p>
                           {member._id === userId && (
-                            <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black">YOU</span>
+                            <span className="text-[9px] bg-accent px-1.5 py-0.5 rounded text-white italic font-black shrink-0">YOU</span>
                           )}
-                        </p>
+                          {isMemberChief ? (
+                            <span className="text-[9px] bg-yellow-500/15 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded font-bold shrink-0">CHIEF</span>
+                          ) : (
+                            <span className="text-[9px] bg-white/5 border border-white/10 text-secondary px-1.5 py-0.5 rounded font-medium shrink-0">MEMBER</span>
+                          )}
+                        </div>
                         {isMemberChief && (
-                          <p className="text-[10px] text-yellow-400 font-bold flex items-center gap-1">
+                          <p className="text-[10px] text-yellow-400/80 font-semibold flex items-center gap-1 mt-0.5">
                             <FiShield size={10} /> Clan Chief
                           </p>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-accent/80 font-bold flex items-center gap-1 bg-accent/10 px-2 py-1 rounded-lg">
-                        <FiStar size={10} /> {(member.points || 0).toLocaleString()} XP
-                      </span>
-                      <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1 bg-orange-500/10 px-2 py-1 rounded-lg" title={`${member.streak || 0} Day Streak`}>
-                        🔥 {member.streak || 0}
-                      </span>
-                      {isMemberChief ? (
-                        <span className="text-[10px] bg-yellow-500/15 text-yellow-400 px-2 py-1 rounded-lg font-bold">
-                          CHIEF
+                    
+                    <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto sm:max-w-[60%] shrink-0">
+                      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full">
+                        <span className="text-[10px] text-accent/90 font-bold flex items-center gap-1 bg-accent/10 border border-accent/20 px-2 py-1 rounded-lg">
+                          <FiStar size={10} /> {(member.points || 0).toLocaleString()} XP
                         </span>
-                      ) : (
-                        <>
-                          <span className="text-[10px] bg-glass-surface text-secondary px-2 py-1 rounded-lg font-medium">
-                            Member
+                        <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-lg" title={`${member.streak || 0} Day Streak`}>
+                          🔥 {member.streak || 0}
+                        </span>
+                        {(memberBadgeMap[member._id] && memberBadgeMap[member._id].length > 0) && (
+                          <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg" title="Total Clan Badges">
+                            <FiAward size={10} /> {memberBadgeMap[member._id].length}
                           </span>
-                        </>
+                        )}
+                      </div>
+                      
+                      {(memberBadgeMap[member._id] && memberBadgeMap[member._id].length > 0) && (
+                        <div className="flex flex-wrap justify-start sm:justify-end gap-1.5 w-full">
+                          {memberBadgeMap[member._id].map(badge => (
+                            <span key={badge._id} className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black px-2 py-1 rounded-md font-black flex items-center gap-1 shadow-[0_0_10px_rgba(251,191,36,0.3)]" title={badge.description || badge.name}>
+                              {badge.icon || <FiAward size={10} />} {badge.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </motion.div>
@@ -269,9 +310,9 @@ const ClanBrowser = ({ clans, loading, userId, onApply, onViewClan, userHasClan,
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
-                <Card className={`h-full group hover:border-accent/40 transition-all ${viewMode === 'list' ? 'flex flex-col sm:flex-row sm:items-center gap-4 py-3 px-5' : 'flex flex-col'}`}>
+                <Card className={`h-full group hover:border-accent/40 transition-all ${viewMode === 'list' ? 'flex flex-row items-center gap-4 py-3 px-5' : 'flex flex-col'}`}>
                   <div className={`flex items-start justify-between ${viewMode === 'list' ? 'shrink-0 mb-0 pr-4 min-w-[200px]' : 'mb-3'}`}>
-                    <div>
+                    <div className="flex items-baseline gap-2">
                       <ClanHoverCard clanId={clan._id}>
                         <h3 className={`font-bold text-lg text-primary group-hover:text-accent transition-colors cursor-pointer ${viewMode === 'list' ? 'whitespace-nowrap' : 'truncate'}`}>
                           {clan.name}
@@ -286,47 +327,49 @@ const ClanBrowser = ({ clans, loading, userId, onApply, onViewClan, userHasClan,
                     )}
                   </div>
 
-                  <p className={`text-secondary text-sm leading-relaxed ${viewMode === 'list' ? 'sm:flex-1 mb-0 line-clamp-2' : 'flex-1 mb-4 line-clamp-3'}`}>
+                  <p className={`text-secondary text-sm leading-relaxed ${viewMode === 'list' ? 'flex-1 mb-0 line-clamp-2' : 'flex-1 mb-4 line-clamp-3'}`}>
                     {clan.description || 'No description provided.'}
                   </p>
 
-                  <div className={`flex items-center gap-4 text-xs text-secondary ${viewMode === 'list' ? 'sm:w-1/4 sm:justify-end pt-0 border-0 mb-0 shrink-0' : 'mb-4 pt-3 border-t border-glass-border/40'}`}>
-                    <span className="flex items-center gap-1">
-                      <FiUsers size={12} /> {(clan.members || []).length} {viewMode === 'grid' ? 'members' : ''}
-                    </span>
-                    <span className="flex items-center gap-1 truncate">
-                      <FiShield size={12} /> {clan.chief?.username || 'None'}
-                    </span>
-                  </div>
+                  <div className={viewMode === 'list' ? 'flex items-center gap-6 ml-auto shrink-0' : 'flex flex-col mt-auto'}>
+                    <div className={`flex items-center gap-4 text-xs text-secondary ${viewMode === 'list' ? 'pt-0 border-0 mb-0 shrink-0' : 'mb-4 pt-3 border-t border-glass-border/40'}`}>
+                      <span className="flex items-center gap-1 whitespace-nowrap">
+                        <FiUsers size={12} /> {(clan.members || []).length} {viewMode === 'grid' ? 'members' : ''}
+                      </span>
+                      <span className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-none">
+                        <FiShield size={12} /> {clan.chief?.username || 'None'}
+                      </span>
+                    </div>
 
-                  <div className={`${viewMode === 'list' ? 'mt-0 sm:ml-4 shrink-0' : 'mt-auto'}`}>
-                    {userHasClan ? (
-                       <button
-                         onClick={() => onViewClan(clan)}
-                         className={`btn-secondary text-sm flex items-center justify-center gap-2 ${viewMode === 'list' ? 'px-4 py-2' : 'w-full'}`}
-                       >
-                         <FiSearch size={14} /> View{viewMode === 'grid' ? ' Clan' : ''}
-                       </button>
-                    ) : isMember ? (
-                      <div className="flex items-center justify-center gap-2 text-green-400 text-xs font-bold bg-green-500/10 px-3 py-2 rounded-lg">
-                        <FiCheckCircle size={14} /> Joined
-                      </div>
-                    ) : (
-                      <div className={`flex gap-2 ${viewMode === 'list' ? '' : 'w-full'}`}>
-                        <button
-                          onClick={() => onViewClan(clan)}
-                          className="btn-secondary flex-1 text-sm flex items-center justify-center gap-2 px-3 py-2"
-                        >
-                          <FiSearch size={14} /> Preview
-                        </button>
-                        <button
-                          onClick={() => onApply(clan._id)}
-                          className="btn-primary flex-1 text-sm px-3 py-2"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    )}
+                    <div className={`${viewMode === 'list' ? 'mt-0 shrink-0' : 'w-full'}`}>
+                      {userHasClan ? (
+                         <button
+                           onClick={() => onViewClan(clan)}
+                           className={`btn-secondary text-sm flex items-center justify-center gap-2 ${viewMode === 'list' ? 'px-4 py-2' : 'w-full'}`}
+                         >
+                           <FiSearch size={14} /> View{viewMode === 'grid' ? ' Clan' : ''}
+                         </button>
+                      ) : isMember ? (
+                        <div className="flex items-center justify-center gap-2 text-green-400 text-xs font-bold bg-green-500/10 px-3 py-2 rounded-lg">
+                          <FiCheckCircle size={14} /> Joined
+                        </div>
+                      ) : (
+                        <div className={`flex gap-2 ${viewMode === 'list' ? '' : 'w-full'}`}>
+                          <button
+                            onClick={() => onViewClan(clan)}
+                            className="btn-secondary flex-1 text-sm flex items-center justify-center gap-2 px-3 py-2"
+                          >
+                            <FiSearch size={14} /> Preview
+                          </button>
+                          <button
+                            onClick={() => onApply(clan._id)}
+                            className="btn-primary flex-1 text-sm px-3 py-2"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Card>
               </motion.div>
@@ -345,6 +388,9 @@ const Clans = () => {
   const MotionDiv = motion.div;
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewClanId = searchParams.get('preview');
+  
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
   const [leaving, setLeaving] = useState(false);
@@ -380,6 +426,27 @@ const Clans = () => {
       return res.data.data || [];
     },
   });
+
+  useEffect(() => {
+    if (previewClanId && clansQuery.data) {
+      const clanToPreview = clansQuery.data.find(c => c._id === previewClanId);
+      if (clanToPreview && viewingOtherClan?._id !== previewClanId) {
+        setViewingOtherClan(clanToPreview);
+      }
+    } else if (!previewClanId && viewingOtherClan) {
+      setViewingOtherClan(null);
+    }
+  }, [previewClanId, clansQuery.data, viewingOtherClan]);
+
+  const handleBackFromPreview = () => {
+    if (previewClanId) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('preview');
+      setSearchParams(newParams, { replace: true });
+    } else {
+      setViewingOtherClan(null);
+    }
+  };
 
   const myClan = myClanQuery.data;
 
@@ -507,7 +574,7 @@ const Clans = () => {
               clan={viewingOtherClan}
               userId={user?.id}
               readOnly={true}
-              onBack={() => setViewingOtherClan(null)}
+              onBack={handleBackFromPreview}
             />
           </MotionDiv>
         ) : isBrowsingOthers ? (
@@ -522,7 +589,7 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               userHasClan={true}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => setSearchParams({ preview: clan._id })}
               onBack={() => setIsBrowsingOthers(false)}
             />
           </MotionDiv>
@@ -552,7 +619,7 @@ const Clans = () => {
               loading={clansQuery.isLoading}
               userId={user?.id}
               onApply={handleApply}
-              onViewClan={(clan) => setViewingOtherClan(clan)}
+              onViewClan={(clan) => setSearchParams({ preview: clan._id })}
             />
           </MotionDiv>
         )}

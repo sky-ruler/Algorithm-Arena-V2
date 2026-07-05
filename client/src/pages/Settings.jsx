@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiUser, FiMapPin, FiGithub, FiTwitter, FiGlobe, FiSave, FiCpu, FiBookOpen, FiLayers, FiGrid, FiAward, FiCalendar, FiLink, FiZap, FiEdit2, FiLinkedin, FiCheck } from 'react-icons/fi';
+import { FiUser, FiMapPin, FiGithub, FiTwitter, FiGlobe, FiSave, FiCpu, FiBookOpen, FiLayers, FiGrid, FiAward, FiCalendar, FiLink, FiZap, FiEdit2, FiLinkedin, FiCheck, FiTerminal, FiSun, FiMoon } from 'react-icons/fi';
+import CodeEditor from '../components/CodeEditor';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
@@ -8,7 +9,38 @@ import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 import toast from 'react-hot-toast';
 import Logo from '../components/Logo';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../components/ui/select';
 
+
+const PREVIEW_CODE = {
+  javascript: `// JavaScript Preview
+function greet(user) {
+  console.log(\`Welcome to the Arena, \${user}!\`);
+}
+greet("Developer");`,
+  python: `# Python Preview
+def greet(user):
+    print(f"Welcome to the Arena, {user}!")
+greet("Developer")`,
+  java: `// Java Preview
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Welcome to the Arena!");
+    }
+}`,
+  cpp: `// C++ Preview
+#include <iostream>
+int main() {
+    std::cout << "Welcome to the Arena!" << std::endl;
+    return 0;
+}`,
+  c: `// C Preview
+#include <stdio.h>
+int main() {
+    printf("Welcome to the Arena!\\n");
+    return 0;
+}`
+};
 
 const Settings = () => {
   const { user, updateUser } = useAuth();
@@ -27,7 +59,10 @@ const Settings = () => {
     website: '',
     profilePicture: '',
     preferredLanguage: 'javascript',
+    editorThemeDark: 'default',
+    editorThemeLight: 'default',
   });
+  const [isPreviewDark, setIsPreviewDark] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
   // Sync form with user data when user loads
@@ -45,9 +80,11 @@ const Settings = () => {
         website: user.website || '',
         profilePicture: user.profilePicture || '',
         preferredLanguage: user.preferredLanguage || 'javascript',
+        editorThemeDark: user.editorThemeDark || 'default',
+        editorThemeLight: user.editorThemeLight || 'default',
       });
     }
-  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture, user?.preferredLanguage]);
+  }, [user, user?.bio, user?.branch, user?.year, user?.section, user?.location, user?.github, user?.twitter, user?.linkedin, user?.website, user?.profilePicture, user?.preferredLanguage, user?.editorThemeDark, user?.editorThemeLight]);
 
   /**
    * Extract just the username when a user pastes a full profile URL.
@@ -170,13 +207,66 @@ const Settings = () => {
 
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Branch / Course</label>
-                <select name="branch" className="field-select" value={formData.branch} onChange={handleChange}>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="">Select Branch</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech CSE">B.Tech CSE</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech ECE">B.Tech ECE</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech EEE">B.Tech EEE</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="MCA">MCA</option>
-                </select>
+                <Select
+                  value={formData.branch || ""}
+                  onValueChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
+                >
+                  <SelectTrigger className="field-select w-full h-auto py-2.5 flex items-center justify-between">
+                    <SelectValue placeholder="Select Branch/Domain" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Engineering & Technology</SelectLabel>
+                      <SelectItem value="B.Tech CSE">B.Tech CSE</SelectItem>
+                      <SelectItem value="B.Tech CSIT">B.Tech CSIT</SelectItem>
+                      <SelectItem value="B.Tech IT">B.Tech IT</SelectItem>
+                      <SelectItem value="B.Tech ECE">B.Tech ECE</SelectItem>
+                      <SelectItem value="B.Tech EE">B.Tech EE</SelectItem>
+                      <SelectItem value="B.Tech EEE">B.Tech EEE</SelectItem>
+                      <SelectItem value="B.Tech Mechanical">B.Tech Mechanical</SelectItem>
+                      <SelectItem value="B.Tech Civil">B.Tech Civil</SelectItem>
+                      <SelectItem value="M.Tech">M.Tech</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Computer Applications</SelectLabel>
+                      <SelectItem value="BCA">BCA</SelectItem>
+                      <SelectItem value="MCA">MCA</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Medical & Health Sciences</SelectLabel>
+                      <SelectItem value="MBBS">MBBS</SelectItem>
+                      <SelectItem value="BDS (Dental)">BDS (Dental)</SelectItem>
+                      <SelectItem value="B.Pharm (Pharmacy)">B.Pharm (Pharmacy)</SelectItem>
+                      <SelectItem value="B.Sc Nursing">B.Sc Nursing</SelectItem>
+                      <SelectItem value="MD / MS">MD / MS</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Law</SelectLabel>
+                      <SelectItem value="BA LLB / BBA LLB">BA LLB / BBA LLB</SelectItem>
+                      <SelectItem value="LLB">LLB</SelectItem>
+                      <SelectItem value="LLM">LLM</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Management & Commerce</SelectLabel>
+                      <SelectItem value="BBA">BBA</SelectItem>
+                      <SelectItem value="MBA">MBA</SelectItem>
+                      <SelectItem value="B.Com">B.Com</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Agriculture & Sciences</SelectLabel>
+                      <SelectItem value="B.Sc Agriculture">B.Sc Agriculture</SelectItem>
+                      <SelectItem value="B.Sc Biotech">B.Sc Biotech</SelectItem>
+                      <SelectItem value="B.Sc (Hons)">B.Sc (Hons)</SelectItem>
+                      <SelectItem value="M.Sc">M.Sc</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Other Domains</SelectLabel>
+                      <SelectItem value="BHMCT (Hotel Management)">BHMCT (Hotel Management)</SelectItem>
+                      <SelectItem value="BA (Hons)">BA (Hons)</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -196,13 +286,20 @@ const Settings = () => {
 
               <div className="space-y-2">
                 <label className="field-label flex items-center gap-2"><FiLayers className="text-accent" size={14} /> Year of Study</label>
-                <select name="year" className="field-select" value={formData.year} onChange={handleChange}>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="">Select Year</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="First Year">First Year</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Second Year">Second Year</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Third Year">Third Year</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Fourth Year">Fourth Year</option>
-                </select>
+                <Select
+                  value={formData.year || ""}
+                  onValueChange={(val) => setFormData(prev => ({ ...prev, year: val }))}
+                >
+                  <SelectTrigger className="field-select w-full h-auto py-2.5 flex items-center justify-between">
+                    <SelectValue placeholder="Select Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="First Year">First Year</SelectItem>
+                    <SelectItem value="Second Year">Second Year</SelectItem>
+                    <SelectItem value="Third Year">Third Year</SelectItem>
+                    <SelectItem value="Fourth Year">Fourth Year</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -210,16 +307,118 @@ const Settings = () => {
                 <input name="location" className="field-input" placeholder="e.g. Bhubaneswar, India" value={formData.location} onChange={handleChange} />
               </div>
 
-              <div className="space-y-2">
-                <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Preferred Code Language</label>
-                <select name="preferredLanguage" className="field-select" value={formData.preferredLanguage} onChange={handleChange}>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="javascript">JavaScript</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="python">Python</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="java">Java</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="cpp">C++</option>
-                  <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="c">C</option>
-                </select>
-                <p className="text-[10px] text-tertiary">Default language pre-selected in the code editor</p>
+            </div>
+          </Card>
+
+          {/* Code Editor Settings */}
+          <Card className="p-8">
+            <div className="flex items-center gap-3 mb-8 pb-4 border-b border-glass-border">
+              <div className="p-2 rounded-lg bg-accent/10 text-accent"><FiTerminal size={20} /></div>
+              <div>
+                <h3 className="text-lg font-bold">Code Editor Settings</h3>
+                <p className="text-xs text-secondary">Configure your workspace defaults and preview them in real time</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+              {/* Form Settings Controls */}
+              <div className="xl:col-span-5 space-y-6">
+                <div className="space-y-2">
+                  <label className="field-label flex items-center gap-2"><FiCpu className="text-accent" size={14} /> Preferred Code Language</label>
+                  <Select
+                    value={formData.preferredLanguage || "javascript"}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, preferredLanguage: val }))}
+                  >
+                    <SelectTrigger className="field-select w-full h-auto py-2.5 flex items-center justify-between">
+                      <SelectValue placeholder="Select Language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="javascript">JavaScript</SelectItem>
+                      <SelectItem value="python">Python</SelectItem>
+                      <SelectItem value="java">Java</SelectItem>
+                      <SelectItem value="cpp">C++</SelectItem>
+                      <SelectItem value="c">C</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-tertiary">Pre-selected language in challenge editor</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="field-label flex items-center gap-2"><FiZap className="text-accent" size={14} /> Dark Mode Editor Theme</label>
+                  <Select
+                    value={formData.editorThemeDark || "default"}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, editorThemeDark: val }))}
+                  >
+                    <SelectTrigger className="field-select w-full h-auto py-2.5 flex items-center justify-between">
+                      <SelectValue placeholder="Select Dark Theme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">System Theme (Algo Arena Dark)</SelectItem>
+                      <SelectItem value="algo-arena-dark">Algo Arena Dark</SelectItem>
+                      <SelectItem value="dracula">Dracula</SelectItem>
+                      <SelectItem value="one-dark">One Dark Pro</SelectItem>
+                      <SelectItem value="monokai">Monokai</SelectItem>
+                      <SelectItem value="nord">Nord</SelectItem>
+                      <SelectItem value="github-dark">GitHub Dark</SelectItem>
+                      <SelectItem value="vs-dark">Monaco Dark</SelectItem>
+                      <SelectItem value="hc-black">High Contrast Black</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-tertiary">Theme used when the app is in Dark Mode</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="field-label flex items-center gap-2"><FiZap className="text-accent" size={14} /> Light Mode Editor Theme</label>
+                  <Select
+                    value={formData.editorThemeLight || "default"}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, editorThemeLight: val }))}
+                  >
+                    <SelectTrigger className="field-select w-full h-auto py-2.5 flex items-center justify-between">
+                      <SelectValue placeholder="Select Light Theme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">System Theme (Algo Arena Light)</SelectItem>
+                      <SelectItem value="algo-arena-light">Algo Arena Light</SelectItem>
+                      <SelectItem value="solarized-light">Solarized Light</SelectItem>
+                      <SelectItem value="vs">Monaco Light</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-tertiary">Theme used when the app is in Light Mode</p>
+                </div>
+              </div>
+
+              {/* Real-time Code Editor Preview */}
+              <div className="xl:col-span-7 flex flex-col h-[280px] rounded-xl border border-glass-border overflow-hidden bg-black/10">
+                <div className="px-4 py-2 border-b border-glass-border flex items-center justify-between bg-white/[0.02] shrink-0">
+                  <span className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                    <FiTerminal className="text-accent" size={12} />
+                    Live Editor Preview
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsPreviewDark(!isPreviewDark)}
+                      className="px-2 py-1 rounded bg-black/20 hover:bg-black/40 border border-glass-border text-[10px] font-bold text-primary flex items-center gap-1 transition-all"
+                    >
+                      {isPreviewDark ? <FiSun className="text-yellow-400" size={10} /> : <FiMoon className="text-blue-400" size={10} />}
+                      Show {isPreviewDark ? 'Light' : 'Dark'} Mode Theme
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 relative">
+                  <CodeEditor
+                    value={PREVIEW_CODE[formData.preferredLanguage] || PREVIEW_CODE.javascript}
+                    language={formData.preferredLanguage}
+                    isDark={isPreviewDark}
+                    readOnly={true}
+                    height="100%"
+                    theme={
+                      isPreviewDark
+                        ? (formData.editorThemeDark === 'default' ? 'algo-arena-dark' : formData.editorThemeDark)
+                        : (formData.editorThemeLight === 'default' ? 'algo-arena-light' : formData.editorThemeLight)
+                    }
+                  />
+                </div>
               </div>
             </div>
           </Card>

@@ -37,9 +37,8 @@ const QuestionSetsTab = () => {
   const [snippetLang,setSnippetLang] = useState('');
   const [editingSetId,setEditingSetId] = useState(null);
   const [deleteSetTarget,setDeleteSetTarget] = useState(null);
-  const [showConfirmUpload, setShowConfirmUpload] = useState(false);
-  const [confirmUploadMessage, setConfirmUploadMessage] = useState('');
-  const [pendingPublishData, setPendingPublishData] = useState(null);
+  const [publishError, setPublishError] = useState(null);
+  const [publishWarning, setPublishWarning] = useState(null);
 
   const blankForm = ()=>({title:'',weekNumber:1,deadline:'',targetLevel:'Both',questions:[{...initialQuestionState}]});
 
@@ -146,58 +145,64 @@ const QuestionSetsTab = () => {
     });
     setView('create');
   };
-  const executePublish = (payload) => {
+
+  const executePublish = () => {
+    const fq = form.questions.map(q => ({...q, testCases: prepareTestCases(q.testCases || [])}));
     if (editingSetId) {
-      updateSetMutation.mutate({ id: editingSetId, body: payload });
+      updateSetMutation.mutate({ id: editingSetId, body: { ...form, questions: fq } });
     } else {
-      createSetMutation.mutate(payload);
+      createSetMutation.mutate({ ...form, questions: fq });
     }
+    setPublishWarning(null);
+    setPublishError(null);
   };
 
   const handlePublish = (e) => {
     e.preventDefault();
-    const fq = form.questions.map(q => ({ ...q, testCases: prepareTestCases(q.testCases || []) }));
-    const payload = { ...form, questions: fq };
-
+    
+    // Find duplicates
     const existingSets = setsQuery.data || [];
-    const activeBlockers = [];
-    const historyMatches = [];
+    let errorDup = null;
+    let warningDup = null;
+    const now = new Date();
 
-    for (const q of fq) {
-      const qTitle = q.title.trim().toLowerCase();
+    for (const currentQ of form.questions) {
+      const qTitle = currentQ.title?.trim().toLowerCase();
       if (!qTitle) continue;
 
-      for (const s of existingSets) {
-        if (editingSetId && s._id === editingSetId) continue;
+      for (const set of existingSets) {
+        if (set._id === editingSetId) continue; // Skip the set currently being edited
+        
+        const hasDuplicate = (set.questions || []).some(
+          existingQ => existingQ.title?.trim().toLowerCase() === qTitle
+        );
 
-        const hasDuplicate = (s.questions || []).some(sq => sq.title.trim().toLowerCase() === qTitle);
         if (hasDuplicate) {
-          const isAct = new Date(s.deadline) >= new Date();
-          if (isAct) {
-            activeBlockers.push({ qTitle: q.title, setTitle: s.title, deadline: s.deadline });
-          } else {
-            historyMatches.push({ qTitle: q.title, setTitle: s.title, setId: s._id, weekNumber: s.weekNumber });
+          const setDeadline = new Date(set.deadline);
+          const isPassed = setDeadline < now;
+
+          if (!isPassed && !errorDup) {
+            errorDup = { questionTitle: currentQ.title, setTitle: set.title, deadline: setDeadline.toLocaleDateString() };
+          } else if (isPassed && !warningDup) {
+            warningDup = { questionTitle: currentQ.title, setTitle: set.title };
           }
         }
       }
     }
 
-    if (activeBlockers.length > 0) {
-      const msg = `Cannot upload. Question "${activeBlockers[0].qTitle}" is already active in Set "${activeBlockers[0].setTitle}" (deadline: ${new Date(activeBlockers[0].deadline).toLocaleDateString()}).`;
-      toast.error(msg);
+    if (errorDup) {
+      setPublishError(errorDup);
+      return;
+    }
+    
+    if (warningDup) {
+      setPublishWarning(warningDup);
       return;
     }
 
-    if (historyMatches.length > 0) {
-      const matchMsg = `Question "${historyMatches[0].qTitle}" has already been pushed on previous set "${historyMatches[0].setTitle}" (Week ${historyMatches[0].weekNumber}). Do you want to push it again?`;
-      setPendingPublishData(payload);
-      setConfirmUploadMessage(matchMsg);
-      setShowConfirmUpload(true);
-      return;
-    }
-
-    executePublish(payload);
+    executePublish();
   };
+
   const handleCreateChallengeSubmit=(e)=>{e.preventDefault();createChallengeMutation.mutate({...createChallengeForm,testCases:prepareTestCases(createChallengeForm.testCases)})};
   const handleUpdateChallengeSubmit=(e)=>{e.preventDefault();if(!editingChallenge)return;updateChallengeMutation.mutate({id:editingChallenge._id,body:{title:editingChallenge.title,description:editingChallenge.description,link:editingChallenge.link||'',difficulty:editingChallenge.difficulty,points:Number(editingChallenge.points),category:editingChallenge.category,functionName:editingChallenge.functionName||'',testCases:prepareTestCases(editingChallenge.testCases||[])}})};
 
@@ -257,7 +262,7 @@ const QuestionSetsTab = () => {
                 <div><label className="field-label">Week Number</label>
                   <div className="relative"><FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary"/><input required type="number" min="1" className="field-input pl-9" value={form.weekNumber} onChange={e=>setForm({...form,weekNumber:Number(e.target.value)})}/></div>
                 </div>
-                <div><label className="field-label">Deadline</label><input required type="date" className="field-input" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></div>
+                <div><label className="field-label">Deadline</label><input required type="date" min={new Date().toISOString().split('T')[0]} className="field-input" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></div>
               </div>
             </BaseCard>
 
@@ -413,36 +418,6 @@ const QuestionSetsTab = () => {
 
       {deleteSetTarget&&<ConfirmDialog open={true} title="Delete Question Set" description={`Delete "${deleteSetTarget.title}" and its generated challenges? This cannot be undone.`} onConfirm={()=>deleteSetMutation.mutate(deleteSetTarget._id)} onCancel={()=>setDeleteSetTarget(null)}/>}
 
-      {showConfirmUpload && (
-        <ConfirmDialog
-          title="Duplicate Question Warning"
-          message={confirmUploadMessage}
-          onConfirm={() => {
-            setShowConfirmUpload(false);
-            if (pendingPublishData) executePublish(pendingPublishData);
-          }}
-          onCancel={() => {
-            setShowConfirmUpload(false);
-            setPendingPublishData(null);
-          }}
-        />
-      )}
-
-      {showConfirmUpload && (
-        <ConfirmDialog
-          title="Duplicate Question Warning"
-          message={confirmUploadMessage}
-          onConfirm={() => {
-            setShowConfirmUpload(false);
-            if (pendingPublishData) executePublish(pendingPublishData);
-          }}
-          onCancel={() => {
-            setShowConfirmUpload(false);
-            setPendingPublishData(null);
-          }}
-        />
-      )}
-
       {/* Import Modal */}
       <AnimatePresence>
         {importModalOpen&&(
@@ -463,6 +438,31 @@ const QuestionSetsTab = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Duplicate Dialogs */}
+      {publishError && (
+        <ConfirmDialog 
+          open={true} 
+          title="Duplicate Question Detected" 
+          description={`This particular question '${publishError.questionTitle}' is already published in the set '${publishError.setTitle}' with deadline '${publishError.deadline}'. You cannot upload it again.`} 
+          onConfirm={() => setPublishError(null)} 
+          onCancel={() => setPublishError(null)}
+          confirmLabel="OK"
+          cancelLabel="Close"
+        />
+      )}
+
+      {publishWarning && (
+        <ConfirmDialog 
+          open={true} 
+          title="Question Already Uploaded" 
+          description={`The question '${publishWarning.questionTitle}' was already uploaded on the set '${publishWarning.setTitle}'. Do you want to upload it again?`} 
+          onConfirm={executePublish} 
+          onCancel={() => setPublishWarning(null)}
+          confirmLabel="Confirm"
+          cancelLabel="Cancel"
+        />
+      )}
     </div>
   );
 };

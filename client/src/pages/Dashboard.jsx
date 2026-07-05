@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import toast from 'react-hot-toast';
 import {
   FiArrowRight,
   FiZap,
@@ -21,9 +22,60 @@ import { useAuth } from "../context/useAuth";
 import SkeletonCard from "../components/SkeletonCard";
 import EmptyState from "../components/EmptyState";
 import ChallengeCard from "../components/Card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { getSessionGreeting } from "../constants/greetings";
 
 /* ── helpers ─────────────────────────────────── */
+const getLocalDrafts = () => {
+  const drafts = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("challenge-draft:")) {
+        const challengeId = key.split(":")[1];
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          const hasCode = draft.codeByLang && Object.values(draft.codeByLang).some(c => c && c.trim());
+          if (draft.repoUrl?.trim() || hasCode) {
+            drafts.push({
+              _id: `draft-${challengeId}`,
+              challengeId: {
+                _id: challengeId,
+                title: draft.challengeTitle || "Unknown Challenge",
+                difficulty: draft.challengeDifficulty || "Easy",
+                points: draft.challengePoints || 0,
+              },
+              status: "Attempted",
+              submittedAt: draft.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading drafts from localStorage", e);
+  }
+  return drafts;
+};
+
+const getCardBadge = (chId, subsMap, drafts) => {
+  if (subsMap[chId] === "Accepted") {
+    return { label: "Solved", cls: "bg-green-500/10 text-green-400 border-green-500/20" };
+  }
+  const hasDraft = drafts.some((d) => d.challengeId?._id === chId);
+  if (hasDraft) {
+    return { label: "Attempted", cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
+  }
+  if (subsMap[chId] === "Rejected") {
+    return { label: "Rejected", cls: "bg-red-500/10 text-red-400 border-red-500/20" };
+  }
+  if (subsMap[chId] === "Pending") {
+    return { label: "Pending Review", cls: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" };
+  }
+  return null;
+};
+
 const getRGB = (d) =>
   d === "Easy"
     ? "34,197,94"
@@ -39,14 +91,13 @@ const buildQS = ({
   search,
   difficulty,
   category,
-  sortBy,
-  sortDir,
 }) => {
   const p = new URLSearchParams();
   p.set("page", page);
   p.set("limit", limit);
-  p.set("sortBy", sortBy);
-  p.set("sortDir", sortDir);
+  // Always fetch by createdAt desc; sorting is handled client-side
+  p.set("sortBy", "createdAt");
+  p.set("sortDir", "desc");
   if (search) p.set("search", search);
   if (difficulty) p.set("difficulty", difficulty);
   if (category) p.set("category", category);
@@ -62,8 +113,24 @@ const fd = (d = 0) => ({
 /* ══════════════════════════════════════════════
    DASHBOARD
    ══════════════════════════════════════════════ */
+const DIFF_ORDER = { Easy: 1, Medium: 2, Hard: 3 };
+
 const Dashboard = () => {
+  const [now] = useState(() => Date.now());
   const { user } = useAuth();
+
+  const [showWarning, setShowWarning] = useState(true);
+  useEffect(() => {
+    if (user?.status === "Warned") {
+      const warnedToastShown = sessionStorage.getItem("warnedToastShown");
+      if (!warnedToastShown) {
+        toast.error('You have been warned', { icon: '⚠️', duration: 6000 });
+        sessionStorage.setItem("warnedToastShown", "true");
+      }
+      const t = setTimeout(() => setShowWarning(false), 20000);
+      return () => clearTimeout(t);
+    }
+  }, [user?.status]);
 
   const greeting = useMemo(() => getSessionGreeting(), []);
 
@@ -84,7 +151,8 @@ const Dashboard = () => {
   const challengesQ = useQuery({
     queryKey: ["dash-challenges", filters],
     queryFn: async () => {
-      const r = await api.get(`/api/challenges?${buildQS(filters)}`);
+      const queryParams = { ...filters, limit: 20 };
+      const r = await api.get(`/api/challenges?${buildQS(queryParams)}`);
       return r.data.data || [];
     },
   });
@@ -117,42 +185,199 @@ const Dashboard = () => {
     },
   });
 
+  const mySubmissionsQ = useQuery({
+    queryKey: ["my-submissions"],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/submissions/my-submissions");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   /* ── derived ─────────────────────────────── */
   const summary = summaryQ.data;
   const profile = profileQ.data;
-  const challenges = challengesQ.data || [];
-  const allSubs = useMemo(
-    () => profile?.recentSubmissions || summary?.recentActivity || [],
-    [profile, summary],
-  );
+  const challenges = challengesQ.data;
 
-  const solved = summary?.solved ?? profile?.acceptedCount ?? 0;
+  const subsMap = useMemo(() => {
+    const map = {};
+    (mySubmissionsQ.data || []).forEach((sub) => {
+      if (!sub.challengeId) return;
+      const cid = typeof sub.challengeId === 'object'
+        ? (sub.challengeId._id || sub.challengeId.id)
+        : sub.challengeId;
+      if (!cid) return;
+      const cidStr = cid.toString();
+      if (!map[cidStr] || sub.status === "Accepted" || (sub.status === "Pending" && map[cidStr] !== "Accepted")) {
+        map[cidStr] = sub.status;
+      }
+
+      const titleKey = sub.challengeId?.title?.trim().toLowerCase();
+      if (titleKey) {
+        if (!map[titleKey] || sub.status === "Accepted" || (sub.status === "Pending" && map[titleKey] !== "Accepted")) {
+          map[titleKey] = sub.status;
+        }
+      }
+    });
+    return map;
+  }, [mySubmissionsQ.data]);
+
+  const availableChallenges = useMemo(() => {
+    // 1. Group and filter out duplicate questions by title (case-insensitive)
+    const seen = new Set();
+    const unique = [];
+    for (const ch of (challenges || [])) {
+      const titleKey = ch.title?.trim().toLowerCase();
+      if (titleKey && !seen.has(titleKey)) {
+        seen.add(titleKey);
+        unique.push(ch);
+      }
+    }
+
+    // 2. Filter out solved and pending challenges by ID or by title
+    const filtered = unique.filter((ch) => {
+      const chId = ch._id?.toString();
+      const titleKey = ch.title?.trim().toLowerCase();
+      const statusById = subsMap[chId];
+      const statusByTitle = titleKey ? subsMap[titleKey] : null;
+
+      const isSolved = statusById === "Accepted" || statusByTitle === "Accepted";
+      const isPending = statusById === "Pending" || statusByTitle === "Pending";
+
+      return !isSolved && !isPending;
+    });
+
+    // 3. Sort by selected criteria
+    const sorted = [...filtered].sort((a, b) => {
+      if (filters.sortBy === 'deadline') {
+        const dlA = a.questionSetId?.deadline ? new Date(a.questionSetId.deadline).getTime() : Infinity;
+        const dlB = b.questionSetId?.deadline ? new Date(b.questionSetId.deadline).getTime() : Infinity;
+
+        const isPastA = dlA < now;
+        const isPastB = dlB < now;
+
+        if (isPastA !== isPastB) return isPastA ? 1 : -1; // Upcoming before past
+        if (dlA !== dlB) return dlA - dlB; // Ascending order
+      } else if (filters.sortBy === 'difficulty') {
+        const dA = DIFF_ORDER[a.difficulty] || 4;
+        const dB = DIFF_ORDER[b.difficulty] || 4;
+        if (dA !== dB) return dA - dB;
+      } else if (filters.sortBy === 'points') {
+        if ((a.points || 0) !== (b.points || 0)) return (b.points || 0) - (a.points || 0);
+      } else if (filters.sortBy === 'title') {
+        const cmp = (a.title || '').localeCompare(b.title || '');
+        if (cmp !== 0) return cmp;
+      } else if (filters.sortBy === 'createdAt') {
+        const tA = new Date(a.createdAt || 0).getTime();
+        const tB = new Date(b.createdAt || 0).getTime();
+        if (tA !== tB) return tB - tA;
+      }
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+
+    // 4. Return at most 4 challenges
+    return sorted.slice(0, 4);
+  }, [challenges, subsMap, filters.sortBy, now]);
+
+  const drafts = useMemo(() => {
+    const rawDrafts = getLocalDrafts();
+    return rawDrafts
+      .map((d) => {
+        if (d.challengeId?.title === "Unknown Challenge") {
+          const matched = (challenges || []).find((c) => c._id === d.challengeId._id);
+          if (matched) {
+            d.challengeId.title = matched.title;
+            d.challengeId.difficulty = matched.difficulty;
+            d.challengeId.points = matched.points;
+          }
+        }
+        return d;
+      })
+      .filter((d) => d.challengeId?.title !== "Unknown Challenge");
+  }, [challenges]);
+
+  const combinedSubs = useMemo(() => {
+    const dbSubs = mySubmissionsQ.data || [];
+    const uniqueMap = new Map();
+
+    dbSubs.forEach((sub) => {
+      const cid = sub.challengeId?._id || sub.challengeId;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (
+        !existing ||
+        sub.status === "Accepted" ||
+        new Date(sub.submittedAt) > new Date(existing.submittedAt)
+      ) {
+        uniqueMap.set(cid, sub);
+      }
+    });
+
+    drafts.forEach((draft) => {
+      const cid = draft.challengeId?._id;
+      if (!cid) return;
+      const existing = uniqueMap.get(cid);
+      if (!existing || existing.status !== "Accepted") {
+        uniqueMap.set(cid, draft);
+      }
+    });
+
+    const list = Array.from(uniqueMap.values());
+    const statusWeight = {
+      "Attempted": 1,
+      "Rejected": 2,
+      "Pending": 3,
+      "Accepted": 4
+    };
+
+    return list.sort((a, b) => {
+      const weightA = statusWeight[a.status] || 3;
+      const weightB = statusWeight[b.status] || 3;
+      if (weightA !== weightB) {
+        return weightA - weightB;
+      }
+      return new Date(b.submittedAt) - new Date(a.submittedAt);
+    });
+  }, [mySubmissionsQ.data, drafts]);
+
+  const recentSubs = useMemo(() => combinedSubs.slice(0, 6), [combinedSubs]);
+
+  const solved = summary?.solved ?? profile?.stats?.acceptedCount ?? profile?.acceptedCount ?? 0;
   const total = summary?.totalChallenges ?? 0;
-  const pending = summary?.pending ?? profile?.pendingCount ?? 0;
+  const pending = summary?.pending ?? profile?.stats?.pendingCount ?? profile?.pendingCount ?? 0;
   const solvedPct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
   const activeSets = useMemo(
-    () =>
-      (setsQ.data || [])
-        .filter((s) => new Date(s.deadline) > new Date())
-        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline)),
-    [setsQ.data],
+    () => {
+      const nowTime = new Date(now);
+      return (setsQ.data || [])
+        .filter((s) => new Date(s.deadline) > nowTime)
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+    },
+    [setsQ.data, now],
   );
   const clampedIdx = Math.min(heroIdx, Math.max(activeSets.length - 1, 0));
   const activeSet = activeSets[clampedIdx];
+
+  const isNewSet = useMemo(() => {
+    if (!activeSet) return false;
+    const createdDate = activeSet.createdAt
+      ? new Date(activeSet.createdAt)
+      : activeSet.deadline
+        ? new Date(new Date(activeSet.deadline).getTime() - 7 * 24 * 60 * 60 * 1000)
+        : new Date(now);
+    return now - createdDate.getTime() < 7 * 24 * 60 * 60 * 1000;
+  }, [activeSet, now]);
 
   const goHero = (dir) => {
     setHeroDir(dir);
     setHeroIdx((i) => Math.max(0, Math.min(activeSets.length - 1, i + dir)));
   };
 
-  const recentSubs = useMemo(
-    () =>
-      [...allSubs]
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
-        .slice(0, 6),
-    [allSubs],
-  );
+
 
   const diffChips = [
     { v: "", l: "All" },
@@ -164,23 +389,26 @@ const Dashboard = () => {
   return (
     <div className="space-y-8 pb-12">
       {/* ── Warning ─────────────────────────── */}
-      {user?.status === "Warned" && (
+      {user?.status === "Warned" && showWarning && (
         <motion.div
           {...fd(0)}
           className="flex items-center gap-3 p-4 rounded-xl border border-red-500/40 bg-red-500/8"
         >
           <FiAlertTriangle className="text-red-400 text-lg flex-shrink-0" />
           <p className="text-sm text-red-400">
-            You have an active warning from your Clan Chief. Please review your
-            activity.
+            <strong className="font-black mr-2">Official Warning:</strong>
+            {user?.warningMessage || "You have an active warning from your Clan Chief. Please review your activity."}
           </p>
         </motion.div>
       )}
 
       {/* ── Greeting ────────────────────────── */}
       <motion.div {...fd(0.04)}>
-        <h2 className="text-3xl font-black text-primary mb-1 font-h2">
-          {greeting.heading.replace("{username}", user?.username || "Operative")}
+        <h2 className="text-2xl font-black text-primary mb-1 font-h2">
+          {greeting.heading.replace(
+            "{username}",
+            (user?.name || user?.username || "Operative").trim().split(/\s+/)[0]
+          )}
         </h2>
         <p className="text-secondary text-sm">
           {greeting.subtext}
@@ -191,9 +419,11 @@ const Dashboard = () => {
       <motion.div {...fd(0.08)} className="relative">
         {/* card shell */}
         <div
-          className="relative overflow-hidden rounded-2xl group transition-all duration-250 border border-black/[0.12] dark:border-white/[0.07]
-          shadow-[0_5px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]
-          dark:shadow-[0_5px_10px_rgba(var(--accent-rgb),0.1),inset_0_1px_0_rgba(255,255,255,0.05)]"
+          className={`relative overflow-hidden rounded-2xl group transition-all duration-300 border transition-shadow duration-500
+          ${isNewSet
+            ? 'dark:border-white/10 shadow-[0_0_25px_rgba(var(--accent-rgb),0.18)] dark:shadow-[0_0_30px_rgba(var(--accent-rgb),0.25)]'
+            : 'border-black/[0.12] dark:border-white/[0.07] shadow-[0_5px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)] dark:shadow-[0_5px_10px_rgba(var(--accent-rgb),0.1),inset_0_1px_0_rgba(255,255,255,0.05)]'
+          }`}
         >
           {/* glow orbs — static behind slides */}
           <div className="absolute -top-20 -left-10 w-80 h-80 rounded-full blur-[120px] pointer-events-none opacity-20"
@@ -203,83 +433,122 @@ const Dashboard = () => {
 
           {/* slides */}
           <div className="relative overflow-hidden">
-            <AnimatePresence mode="wait" initial={false} custom={heroDir}>
-              <motion.div
-                key={clampedIdx}
-                custom={heroDir}
-                variants={{
-                  enter: (dir) => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
-                  center: { x: 0, opacity: 1 },
-                  exit: (dir) => ({ x: dir > 0 ? -60 : 60, opacity: 0 }),
-                }}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.28, ease: "easeInOut" }}
-                className="p-8"
-              >
+            {setsQ.isLoading ? (
+              <div className="p-8 animate-pulse">
                 <div className="relative z-30 flex flex-col md:flex-row md:items-center gap-6">
-                  <div className="flex-1 min-w-0">
-                    {/* deadline badge */}
-                    {activeSet && (
-                      <div className="flex items-center gap-2 mb-4">
-                        <span className="inline-block text-[10px] font-black uppercase tracking-[0.35em] text-accent">
-                          {activeSets.length > 1
-                            ? `Challenge ${clampedIdx + 1} of ${activeSets.length}`
-                            : "This Week's Challenge"}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                          <FiClock size={9} /> Due {new Date(activeSet.deadline).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                        </span>
-                      </div>
-                    )}
-                    {!activeSet && (
-                      <span className="inline-block text-[10px] font-black uppercase tracking-[0.35em] text-accent mb-4">
-                        This Week's Challenge
-                      </span>
-                    )}
+                  <div className="flex-1 min-w-0 space-y-4">
+                    {/* Tag skeleton */}
+                    <div className="h-3 w-32 bg-black/10 dark:bg-white/10 rounded-full" />
 
-                    <h1 className="text-2xl sm:text-4xl md:text-5xl font-black leading-[1.1] dark:text-white text-black mb-3 font-h1">
-                      {activeSet ? (
-                        <>
-                          {activeSet.title.split(" ").slice(0, -1).join(" ")}{" "}
-                          <span style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,1))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                            {activeSet.title.split(" ").slice(-1)[0]}
-                          </span>
-                        </>
-                      ) : (
-                        <>Mastering Dynamic{" "}<span style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,1))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Programming</span></>
-                      )}
-                    </h1>
+                    {/* Title skeleton */}
+                    <div className="space-y-2">
+                      <div className="h-8 md:h-10 w-2/3 bg-black/15 dark:bg-white/15 rounded-xl" />
+                      <div className="h-8 md:h-10 w-1/2 bg-black/15 dark:bg-white/15 rounded-xl" />
+                    </div>
 
-                    <p className="text-secondary text-sm leading-relaxed mb-6 max-w-md">
-                      {activeSet
-                        ? `Target Level: ${activeSet.targetLevel} · ${activeSet.questions?.length || 0} questions `
-                        : "Push your limits with this week's elite challenge. Solve complex optimizations and climb the global leaderboards."}
-                    </p>
+                    {/* Description skeleton */}
+                    <div className="space-y-2 max-w-md pt-2">
+                      <div className="h-3 w-full bg-black/10 dark:bg-white/10 rounded-full" />
+                      <div className="h-3 w-5/6 bg-black/10 dark:bg-white/10 rounded-full" />
+                    </div>
 
-                    <div className="flex flex-wrap items-center gap-3 z-10">
-                      <Link
-                        to={activeSet ? `/missions?setId=${activeSet._id}` : "/missions"}
-                        className="inline-flex items-center gap-2 px-6 py-2.5 z-30 rounded-xl text-sm font-black text-white transition-all hover:opacity-90 active:scale-95"
-                        style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,0.9))", boxShadow: "0 4px 20px rgba(var(--accent-rgb),0.4)" }}
-                      >
-                        Enter Arena <FiArrowRight size={14} />
-                      </Link>
-                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-tertiary">
-                        <FiZap className="text-yellow-400" size={13} />+
-                        {activeSet?.questions?.reduce((a, q) => a + (q.points || 0), 0) || 50} XP
-                      </div>
+                    {/* Action button + XP indicator skeleton */}
+                    <div className="flex items-center gap-4 pt-4">
+                      <div className="h-10 w-36 bg-black/15 dark:bg-white/15 rounded-xl" />
+                      <div className="h-5 w-20 bg-black/10 dark:bg-white/10 rounded-full" />
                     </div>
                   </div>
 
-                  {/* watermark */}
-                  <div className="hidden md:flex items-center justify-center flex-shrink-0 opacity-[0.08] group-hover:opacity-[0.4] transition-all duration-700 group-hover:rotate-6">
-                    <FiCpu size={180} className="text-accent" />
+                  {/* Watermark watermark CPU skeleton */}
+                  <div className="hidden md:flex items-center justify-center flex-shrink-0 opacity-[0.03]">
+                    <div className="w-40 h-40 bg-black/20 dark:bg-white/20 rounded-full" />
                   </div>
                 </div>
-              </motion.div>
-            </AnimatePresence>
+              </div>
+            ) : (
+              <AnimatePresence mode="wait" initial={false} custom={heroDir}>
+                <motion.div
+                  key={clampedIdx}
+                  custom={heroDir}
+                  variants={{
+                    enter: (dir) => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
+                    center: { x: 0, opacity: 1 },
+                    exit: (dir) => ({ x: dir > 0 ? -60 : 60, opacity: 0 }),
+                  }}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.28, ease: "easeInOut" }}
+                  className="p-8"
+                >
+                  <div className="relative z-30 flex flex-col md:flex-row md:items-center gap-6">
+                    <div className="flex-1 min-w-0">
+                      {/* deadline badge */}
+                      {activeSet && (
+                        <div className="flex items-center gap-2 mb-4 flex-wrap">
+                          <span className="inline-block text-[10px] font-black uppercase tracking-[0.35em] text-accent">
+                            {activeSets.length > 1
+                              ? `Challenge ${clampedIdx + 1} of ${activeSets.length}`
+                              : "This Week's Challenge"}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                            <FiClock size={9} /> Due {new Date(activeSet.deadline).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                          </span>
+                          {isNewSet && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shadow-[0_0_12px_rgba(16,185,129,0.3)] animate-pulse">
+                              New Set
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!activeSet && (
+                        <span className="inline-block text-[10px] font-black uppercase tracking-[0.35em] text-accent mb-4">
+                          This Week's Challenge
+                        </span>
+                      )}
+
+                      <h1 className="text-2xl md:text-3xl font-black leading-[1.1] dark:text-white text-black mb-3 font-h1">
+                        {activeSet ? (
+                          <>
+                            {activeSet.title.split(" ").slice(0, -1).join(" ")}{" "}
+                            <span style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,1))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                              {activeSet.title.split(" ").slice(-1)[0]}
+                            </span>
+                          </>
+                        ) : (
+                          <>Mastering Dynamic{" "}<span style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,1))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Programming</span></>
+                        )}
+                      </h1>
+
+                      <p className="text-secondary text-sm leading-relaxed mb-6 max-w-md">
+                        {activeSet
+                          ? `Target Level: ${activeSet.targetLevel?.toLowerCase() === "both" ? "Beginner and intermediate" : activeSet.targetLevel} · ${activeSet.questions?.length || 0} questions `
+                          : "Push your limits with this week's elite challenge. Solve complex optimizations and climb the global leaderboards."}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-3 z-10">
+                        <Link
+                          to={activeSet ? `/missions?setId=${activeSet._id}` : "/missions"}
+                          className="inline-flex items-center gap-2 px-6 py-2.5 z-30 rounded-xl text-sm font-black text-white transition-all hover:opacity-90 active:scale-95"
+                          style={{ background: "linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(168,85,247,0.9))", boxShadow: "0 4px 20px rgba(var(--accent-rgb),0.4)" }}
+                        >
+                          Enter Arena <FiArrowRight size={14} />
+                        </Link>
+                        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-tertiary">
+                          <FiZap className="text-yellow-400" size={13} />+
+                          {activeSet?.questions?.reduce((a, q) => a + (q.points || 0), 0) || 50} XP
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* watermark */}
+                    <div className="clip md:flex items-center justify-center flex-shrink-0 opacity-[0.08] group-hover:opacity-[0.4] transition-all duration-700 group-hover:rotate-6">
+                      <FiCpu size={180} className="text-accent" />
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            )}
           </div>
 
           {/* edge-click navigation zones — only when multiple sets */}
@@ -342,37 +611,33 @@ const Dashboard = () => {
 
       {/* ── Stat bar ────────────────────────── */}
       <motion.div {...fd(0.12)}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             {
               icon: FiTarget,
               label: "Total Challenges",
               value: total,
-              delta: "+2%",
               color: "text-accent",
             },
             {
               icon: FiCheckCircle,
               label: "Solved",
               value: solved,
-              delta: "+2%",
               color: "text-green-400",
             },
             {
               icon: FiClock,
               label: "Pending Reviews",
               value: pending,
-              delta: "+2%",
               color: "text-yellow-400",
             },
             {
               icon: FiTrendingUp,
               label: "Solver Rate",
               value: `${solvedPct}%`,
-              delta: "+2%",
               color: "text-purple-400",
             },
-          ].map(({ icon: Icon, label, value, delta, color }) => (
+          ].map(({ icon: Icon, label, value, color }) => (
             <div
               key={label}
               className="flex items-center gap-3 p-4 rounded-xl border border-black/[0.15] dark:border-white/[0.11] transition-all hover:scale-[1.02]
@@ -385,10 +650,11 @@ const Dashboard = () => {
                   {label}
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-xl font-black ${color} font-h2`}>{value}</span>
-                  <span className="text-[10px] text-green-500 font-bold">
-                    {delta}
-                  </span>
+                  {summaryQ.isLoading || profileQ.isLoading ? (
+                    <div className="h-6 w-12 bg-black/10 dark:bg-white/10 rounded-md animate-pulse mt-0.5" />
+                  ) : (
+                    <span className={`text-xl font-black ${color} font-h2`}>{value}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -426,16 +692,20 @@ const Dashboard = () => {
                 onChange={(e) => hf("search", e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-1 bg-white/[0.03] border border-black/[0.12] dark:border-white/[0.06] rounded-xl px-3 h-8">
-              <FiFilter size={10} className="text-tertiary" />
-              <select
-                className="bg-transparent text-xs text-secondary font-semibold outline-none"
-                value={filters.sortBy}
-                onChange={(e) => hf("sortBy", e.target.value)}
-              >
-                <option value="createdAt">Newest</option>
-                <option value="points">XP</option>
-              </select>
+            <div className="flex items-center bg-white/[0.03] border border-black/[0.12] dark:border-white/[0.06] rounded-xl px-2 h-8">
+              <FiFilter size={10} className="text-tertiary ml-1 shrink-0" />
+              <Select value={filters.sortBy} onValueChange={(val) => hf("sortBy", val)}>
+                <SelectTrigger className="border-none bg-transparent h-full text-xs text-secondary font-semibold hover:bg-transparent focus:ring-0 focus:ring-offset-0 shadow-none py-0 pl-1 pr-2 w-auto gap-1">
+                  <SelectValue placeholder="Sort By" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="deadline">Deadline</SelectItem>
+                  <SelectItem value="difficulty">Difficulty</SelectItem>
+                  <SelectItem value="createdAt">Newest</SelectItem>
+                  <SelectItem value="points">XP</SelectItem>
+                  <SelectItem value="title">Title</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -450,7 +720,7 @@ const Dashboard = () => {
                     ? "bg-yellow-500/15 border-yellow-500/40 text-yellow-400"
                     : v === "Hard"
                       ? "bg-red-500/15 border-red-500/40 text-red-400"
-                      : "bg-accent/15 border-accent/40 text-accent"
+                      : "bg-accent/15 dark:border-white/40 text-accent"
                 : "bg-white/[0.03] border-black/[0.12] dark:border-white/[0.07] text-tertiary hover:text-secondary hover:border-white/20";
               return (
                 <button
@@ -471,20 +741,21 @@ const Dashboard = () => {
                 <SkeletonCard key={i} />
               ))}
             </div>
-          ) : challenges.length === 0 ? (
+          ) : availableChallenges.length === 0 ? (
             <EmptyState
               title="No missions found"
               description="Adjust filters or check back later."
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {challenges.map((ch, i) => {
+              {availableChallenges.map((ch, i) => {
                 const diffCls =
                   ch.difficulty === "Easy"
                     ? "bg-green-500/15 text-green-400 border-green-500/25"
                     : ch.difficulty === "Medium"
                       ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/25"
                       : "bg-red-500/15 text-red-400 border-red-500/25";
+                const badge = getCardBadge(ch._id, subsMap, drafts);
                 return (
                   <motion.div
                     key={ch._id}
@@ -502,11 +773,20 @@ const Dashboard = () => {
                         difficultyColor={getRGB(ch.difficulty)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span
-                            className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${diffCls}`}
-                          >
-                            {ch.difficulty}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${diffCls}`}
+                            >
+                              {ch.difficulty}
+                            </span>
+                            {badge && (
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${badge.cls}`}
+                              >
+                                {badge.label}
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] font-black text-accent">
                             {ch.points} XP
                           </span>
@@ -518,7 +798,7 @@ const Dashboard = () => {
                           {/* eslint-disable-next-line */}
                           {new Date() - new Date(ch.createdAt || Date.now()) <
                             7 * 24 * 60 * 60 * 1000 && (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 flex-shrink-0 mt-0.5">
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-0.5">
                               New
                             </span>
                           )}
@@ -560,7 +840,19 @@ const Dashboard = () => {
           </h2>
 
           <div className="rounded-2xl border border-black/[0.12] dark:border-white/[0.06] overflow-hidden">
-            {recentSubs.length === 0 ? (
+            {summaryQ.isLoading || profileQ.isLoading ? (
+              <div className="divide-y divide-black/[0.08] dark:divide-white/[0.04]">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-4 animate-pulse">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="h-3.5 w-2/3 bg-black/10 dark:bg-white/10 rounded-full" />
+                      <div className="h-2.5 w-1/3 bg-black/10 dark:bg-white/10 rounded-full" />
+                    </div>
+                    <div className="h-5 w-16 bg-black/10 dark:bg-white/10 rounded-md ml-3" />
+                  </div>
+                ))}
+              </div>
+            ) : recentSubs.length === 0 ? (
               <div className="p-8 text-center">
                 <FiCpu size={32} className="text-white/10 mx-auto mb-3" />
                 <p className="text-xs text-tertiary">
@@ -572,20 +864,25 @@ const Dashboard = () => {
                 {recentSubs.map((sub, i) => {
                   const ac = sub.status === "Accepted";
                   const wa = sub.status === "Rejected";
+                  const att = sub.status === "Attempted";
                   const badgeCls = ac
                     ? "bg-green-500/15 text-green-400 border-green-500/25"
                     : wa
                       ? "bg-red-500/15 text-red-400 border-red-500/25"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/25";
+                      : att
+                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
+                        : "bg-yellow-500/15 text-yellow-400 border-yellow-500/25";
                   const badgeLabel = ac
-                    ? "ACCEPTED"
+                    ? "SOLVED"
                     : wa
                       ? "REJECTED"
-                      : "PENDING";
+                      : att
+                        ? "ATTEMPTED"
+                        : "PENDING REVIEW";
                   return (
                     <Link
                       key={sub._id + i}
-                      to={`/submission/${sub._id}`}
+                      to={att ? `/challenge/${sub.challengeId?._id}` : `/submission/${sub._id}`}
                       className="group flex items-center justify-between px-4 py-3.5 hover:bg-white/[0.03] transition-all"
                     >
                       <div className="min-w-0 flex-1">

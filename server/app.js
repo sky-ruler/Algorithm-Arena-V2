@@ -37,12 +37,12 @@ const createApp = () => {
 
   // Keep Render keepalive traffic as cheap as possible by bypassing the
   // standard middleware chain and returning immediately.
-   app.get('/', (_req, res) => {
-  return res.status(200).json({
-    success: true,
-    message: 'Algorithm Arena API is running'
+  app.get('/', (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      message: 'Algorithm Arena API is running'
+    });
   });
-});
   app.get('/ping', (_req, res) => {
     return res.status(200).json({ ok: true });
   });
@@ -50,6 +50,7 @@ const createApp = () => {
   app.use(requestContext);
   app.use(
     helmet({
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
@@ -83,7 +84,7 @@ const createApp = () => {
 
   const apiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: isNonProductionEnv ? 1000 : 200,
+    max: isNonProductionEnv ? 2000 : 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many requests, please try again later.' },
@@ -93,7 +94,7 @@ const createApp = () => {
   // Stricter limiter for auth endpoints to prevent brute-force attacks
   const authLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: isNonProductionEnv ? 200 : 10,
+    max: isNonProductionEnv ? 200 : 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many authentication attempts, please try again later.' },

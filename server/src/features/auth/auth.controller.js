@@ -1,4 +1,5 @@
 const User = require('../users/User.model');
+const XpLog = require('../users/XpLog.model');
 const RefreshToken = require('./RefreshToken.model');
 const { sendSuccess } = require('../../../utils/response');
 const { verifyGoogleToken } = require('./googleAuth');
@@ -22,6 +23,7 @@ const toAuthPayload = (user, accessToken, { isChief = false, dailyXpAwarded = fa
     username: user.username || null,
     email: user.email,
     role: user.role,
+    customTitle: user.customTitle || null,
     status: user.status,
     warningMessage: user.warningMessage || null,
     points: user.points,
@@ -41,6 +43,8 @@ const toAuthPayload = (user, accessToken, { isChief = false, dailyXpAwarded = fa
     linkedin: user.linkedin || '',
     website: user.website || '',
     preferredLanguage: user.preferredLanguage || 'javascript',
+    editorThemeDark: user.editorThemeDark || 'default',
+    editorThemeLight: user.editorThemeLight || 'default',
     createdAt: user.createdAt,
     isChief,
     dailyXpAwarded,
@@ -90,8 +94,8 @@ const googleAuth = async (req, res, next) => {
       return res.status(503).json({ success: false, message: 'Firebase Auth is not configured' });
     }
 
-    // 1. Verify Firebase ID token checking for revocation
-    const decodedToken = await firebaseAuth.verifyIdToken(idToken, true);
+    // 1. Verify Firebase ID token locally (without making an extra network request to check revocation to prevent timeouts)
+    const decodedToken = await firebaseAuth.verifyIdToken(idToken);
     const { uid, email, picture, email_verified } = decodedToken;
 
     if (!email) {
@@ -117,9 +121,10 @@ const googleAuth = async (req, res, next) => {
       user = await User.findOne({ email: email.toLowerCase() });
 
       if (user) {
-        // Prevent account takeover: if user has a different firebaseUid linked, reject
+        // If the user's Firebase UID changed (e.g. account deleted from Firebase console and recreated),
+        // we trust the verified email from Firebase and update the UID to prevent them from being locked out.
         if (user.firebaseUid && user.firebaseUid !== uid) {
-          return res.status(400).json({ success: false, message: 'This email is already linked to another Google account' });
+          console.warn(`Updating firebaseUid for user ${email} from ${user.firebaseUid} to ${uid}`);
         }
         // Link existing account to Firebase
         user.firebaseUid = uid;
@@ -193,9 +198,21 @@ const googleAuth = async (req, res, next) => {
     const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
     const isFirstLoginToday = !lastLogin || lastLogin < today;
 
-    if (isFirstLoginToday && !isNewUser) {
+    const XpLog = require('../users/XpLog.model');
+    const existingDailyLog = await XpLog.exists({
+      userId: user._id,
+      reason: 'Daily Login',
+      createdAt: { $gte: today }
+    });
+
+    if (isFirstLoginToday && !existingDailyLog && user.usernameSet) {
       user.points = (user.points || 0) + 50;
       dailyXpAwarded = true;
+      await XpLog.create({
+        userId: user._id,
+        amount: 50,
+        reason: 'Daily Login',
+      });
     }
 
     user.lastLoginDate = now;
@@ -227,7 +244,8 @@ const googleAuth = async (req, res, next) => {
 // @access  Private
 const claimUsername = async (req, res, next) => {
   try {
-    const { username, name, regNo, branch, year, section } = req.body;
+    let { username, name, regNo, branch, year, section } = req.body;
+    if (username) username = username.toLowerCase();
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -361,7 +379,7 @@ const googleLogin = async (req, res, next) => {
         .slice(0, 15);
       if (baseUsername.length < 3) baseUsername = 'user_' + baseUsername;
 
-      let username = baseUsername;
+      let username = baseUsername.toLowerCase();
       let suffix = 1;
       while (await User.findOne({ username })) {
         username = `${baseUsername}${suffix}`;
@@ -386,9 +404,21 @@ const googleLogin = async (req, res, next) => {
     const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
     const isFirstLoginToday = !lastLogin || lastLogin < today;
 
-    if (isFirstLoginToday) {
+    const XpLog = require('../users/XpLog.model');
+    const existingDailyLog = await XpLog.exists({
+      userId: user._id,
+      reason: 'Daily Login',
+      createdAt: { $gte: today }
+    });
+
+    if (isFirstLoginToday && !existingDailyLog && user.usernameSet) {
       user.points = (user.points || 0) + 50;
       dailyXpAwarded = true;
+      await XpLog.create({
+        userId: user._id,
+        amount: 50,
+        reason: 'Daily Login',
+      });
     }
 
     user.lastLoginDate = now;
@@ -520,7 +550,7 @@ const logoutAll = async (req, res, next) => {
 
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).populate('clan', 'name').lean();
+    const user = await User.findById(req.user.id).populate('clan', 'name').populate('featuredBadge').lean();
     if (!user) {
       res.status(404);
       throw new Error('User not found');
@@ -531,16 +561,31 @@ const getMe = async (req, res, next) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
+    const isFirstLoginToday = !lastLogin || lastLogin < today;
 
-    if (!lastLogin || lastLogin < today) {
-      user.points = (user.points || 0) + 50;
+    const XpLog = require('../users/XpLog.model');
+    const existingDailyLog = await XpLog.exists({
+      userId: user._id,
+      reason: 'Daily Login',
+      createdAt: { $gte: today }
+    });
+
+    if (isFirstLoginToday && !existingDailyLog) {
+      if (user.usernameSet) {
+        user.points = (user.points || 0) + 50;
+        dailyXpAwarded = true;
+        await XpLog.create({
+          userId: user._id,
+          amount: 50,
+          reason: 'Daily Login',
+        });
+      }
       user.lastLoginDate = now;
       await User.findByIdAndUpdate(user._id, {
         points: user.points,
         lastLoginDate: user.lastLoginDate,
         lastConfirmedAt: now
       });
-      dailyXpAwarded = true;
     }
 
     // Check if user is a chief of any clan
@@ -561,7 +606,19 @@ const getMe = async (req, res, next) => {
 
 const updateMe = async (req, res, next) => {
   try {
-    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture, preferredLanguage } = req.body;
+    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture, preferredLanguage, editorThemeDark, editorThemeLight } = req.body;
+
+    // Normalize URLs: prepend https:// if the value looks like a URL but has no protocol
+    const normalizeUrl = (val) => {
+      if (!val || typeof val !== 'string') return val;
+      const trimmed = val.trim();
+      if (!trimmed) return trimmed;
+      // If it already has a protocol, leave it alone
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      // If it looks like a domain/path (contains a dot or slash), prepend https://
+      if (/[.\/]/.test(trimmed)) return `https://${trimmed}`;
+      return trimmed;
+    };
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -572,12 +629,14 @@ const updateMe = async (req, res, next) => {
           year,
           section,
           location,
-          github,
-          twitter,
-          linkedin,
-          website,
+          github: normalizeUrl(github),
+          twitter: normalizeUrl(twitter),
+          linkedin: normalizeUrl(linkedin),
+          website: normalizeUrl(website),
           profilePicture,
-          preferredLanguage
+          preferredLanguage,
+          editorThemeDark,
+          editorThemeLight
         }
       },
       { new: true, runValidators: true }

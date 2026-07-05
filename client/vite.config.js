@@ -1,11 +1,54 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import analyzer from 'vite-bundle-analyzer'
+import path from "path"
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler']],
+      },
+    }),
+    analyzer({
+      analyzerMode: 'static',
+      openAnalyzer: false,
+    }),
+  ],
   server: {
     port: 3000,
     strictPort: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    target: 'esnext',
+    minify: 'esbuild',
+    cssMinify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'firebase': ['firebase/app', 'firebase/auth',],
+          'monaco-editor': ['@monaco-editor/react'],
+          'ui-vendor': ['framer-motion', 'react-icons', 'clsx', 'tailwind-merge', 'react-hot-toast'],
+          'three-vendor': ['three', 'postprocessing'],
+        },
+      },
+    },
+  },
+  esbuild: {
+    drop: ['console', 'debugger'],
   },
 })

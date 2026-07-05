@@ -6,6 +6,7 @@ const csv = require('csv-parser');
 const { Readable } = require('stream');
 const mammoth = require('mammoth');
 const { fetchLeetCodeDetails } = require('../../../services/leetcode.service');
+const { cleanupSubmissionsAndUserStats } = require('./challenge.service');
 
 const getChallenges = async (req, res, next) => {
   try {
@@ -19,6 +20,8 @@ const getChallenges = async (req, res, next) => {
       sortBy = 'createdAt',
       sortDir = 'desc',
     } = req.query;
+
+    const safeLimit = Math.min(Number(limit) || 10, 100);
 
     const filter = {};
     const andConditions = [];
@@ -34,14 +37,7 @@ const getChallenges = async (req, res, next) => {
       });
     }
     if (search) {
-      andConditions.push({
-        $or: [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-          { tags: { $in: [new RegExp(search, 'i')] } },
-          { category: { $regex: search, $options: 'i' } }
-        ]
-      });
+      andConditions.push({ $text: { $search: search } });
     }
 
     if (andConditions.length > 0) {
@@ -49,32 +45,101 @@ const getChallenges = async (req, res, next) => {
     }
 
     const sortOrder = sortDir === 'asc' ? 1 : -1;
-    const sort = sortBy === 'difficulty' ? { createdAt: -1 } : { [sortBy]: sortOrder };
+    const skip = (Number(page) - 1) * safeLimit;
 
-    const skip = (page - 1) * limit;
+    let total;
+    let challenges;
 
-    let [total, challenges] = await Promise.all([
-      Challenge.countDocuments(filter),
-      Challenge.find(filter).populate('questionSetId').sort(sort),
-    ]);
+    if (sortBy === 'recommended') {
+      const countPromise = Challenge.countDocuments(filter);
+      const aggPromise = Challenge.aggregate([
+        { $match: filter },
+        {
+          $lookup: {
+            from: 'questionsets',
+            localField: 'questionSetId',
+            foreignField: '_id',
+            as: 'questionSetId'
+          }
+        },
+        {
+          $unwind: {
+            path: '$questionSetId',
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            difficultyOrder: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$difficulty', 'Easy'] }, then: 1 },
+                  { case: { $eq: ['$difficulty', 'Medium'] }, then: 2 },
+                  { case: { $eq: ['$difficulty', 'Hard'] }, then: 3 }
+                ],
+                default: 4
+              }
+            },
+            deadlineSort: { $ifNull: ['$questionSetId.deadline', new Date('9999-12-31')] }
+          }
+        },
+        { $sort: { deadlineSort: 1, difficultyOrder: 1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: safeLimit }
+      ]);
 
-    // Handle custom difficulty sorting: Hard -> Medium -> Easy
-    if (sortBy === 'difficulty') {
-      const diffOrder = { 'Hard': 1, 'Medium': 2, 'Easy': 3 };
-      challenges.sort((a, b) => {
-        const orderA = diffOrder[a.difficulty] || 99;
-        const orderB = diffOrder[b.difficulty] || 99;
-        if (orderA !== orderB) {
-          return (orderA - orderB) * sortOrder;
+      const [totalCount, aggResults] = await Promise.all([countPromise, aggPromise]);
+      total = totalCount;
+      challenges = aggResults;
+    } else if (sortBy === 'difficulty') {
+      const countPromise = Challenge.countDocuments(filter);
+      const aggPromise = Challenge.aggregate([
+        { $match: filter },
+        {
+          $addFields: {
+            difficultyOrder: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$difficulty', 'Hard'] }, then: 3 },
+                  { case: { $eq: ['$difficulty', 'Medium'] }, then: 2 },
+                  { case: { $eq: ['$difficulty', 'Easy'] }, then: 1 }
+                ],
+                default: 0
+              }
+            }
+          }
+        },
+        { $sort: { difficultyOrder: sortOrder, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: safeLimit },
+        {
+          $lookup: {
+            from: 'questionsets',
+            localField: 'questionSetId',
+            foreignField: '_id',
+            as: 'questionSetId'
+          }
+        },
+        {
+          $unwind: {
+            path: '$questionSetId',
+            preserveNullAndEmptyArrays: true
+          }
         }
-        // Fallback to createdAt if difficulties are same
-        return (new Date(b.createdAt) - new Date(a.createdAt));
-      });
-    }
+      ]);
 
-    // Apply pagination post-sorting (necessary if sorted in memory)
-    total = challenges.length;
-    challenges = challenges.slice(skip, skip + Number(limit));
+      const [totalCount, aggResults] = await Promise.all([countPromise, aggPromise]);
+      total = totalCount;
+      challenges = aggResults;
+    } else {
+      const sort = { [sortBy]: sortOrder };
+      const [totalCount, findResults] = await Promise.all([
+        Challenge.countDocuments(filter),
+        Challenge.find(filter).populate('questionSetId').sort(sort).skip(skip).limit(safeLimit),
+      ]);
+      total = totalCount;
+      challenges = findResults;
+    }
 
     // Auto-create Challenge documents for question sets that don't have them yet
     if (setId && total === 0 && !search && !difficulty && !category) {
@@ -101,9 +166,9 @@ const getChallenges = async (req, res, next) => {
       data: challenges,
       meta: {
         page,
-        limit,
+        limit: safeLimit,
         total,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages: Math.ceil(total / safeLimit) || 1,
       },
     });
   } catch (err) {
@@ -196,6 +261,10 @@ const deleteChallenge = async (req, res, next) => {
       res.status(404);
       throw new Error('Challenge not found');
     }
+
+    // --- Cleanup logic for Submissions and User Stats ---
+    await cleanupSubmissionsAndUserStats([challenge._id]);
+    // ----------------------------------------------------
 
     await challenge.deleteOne();
 

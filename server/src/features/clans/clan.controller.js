@@ -44,7 +44,8 @@ const rejectArchivedClanMutation = (res, clan) => {
 
 const isTransactionUnsupported = (error) => {
   const message = (error && error.message) || '';
-  return message.includes('Transaction numbers are only allowed on a replica set member or mongos');
+  return message.includes('Transaction') &&
+    (message.includes('replica set') || message.includes('mongos') || message.includes('supported'));
 };
 
 const runWithOptionalTransaction = async (work) => {
@@ -109,7 +110,7 @@ const getMyClan = async (req, res, next) => {
       $or: [{ chief: userId }, { members: userId }]
     })
       .populate('chief', 'username email')
-      .populate('members', 'username email status codingLevel points solvedProblems regNo clan profilePicture streak')
+      .populate('members', 'name username email status codingLevel points solvedProblems regNo clan profilePicture streak')
       .populate('requests', 'username email regNo')
       .populate('createdBy', 'username email')
       .populate('archivedBy', 'username email')
@@ -120,42 +121,34 @@ const getMyClan = async (req, res, next) => {
     }
 
     const clan = clanDoc.toObject();
-    
+
     // Dynamically calculate totalPoints based on members' accepted submissions
     const memberIds = clan.members.map(m => m._id);
     if (memberIds.length > 0) {
-      const stats = await Submission.aggregate([
-        { $match: { userId: { $in: memberIds }, status: 'Accepted' } },
-        {
-          $group: {
-            _id: { userId: '$userId', challengeId: '$challengeId' }
-          }
-        },
-        {
-          $lookup: {
-            from: 'challenges',
-            localField: '_id.challengeId',
-            foreignField: '_id',
-            as: 'challenge',
-          },
-        },
-        { $unwind: '$challenge' },
-        {
-          $group: {
-            _id: '$_id.userId',
-            totalPoints: { $sum: '$challenge.points' },
-          },
-        },
-      ]);
-      const pointsByUser = {};
       let totalClanPoints = 0;
-      stats.forEach(s => {
-        pointsByUser[s._id.toString()] = s.totalPoints;
-        totalClanPoints += s.totalPoints;
+      clan.members.forEach(m => {
+        totalClanPoints += m.points || 0;
       });
+
+      let weeklyByUser = {};
+      try {
+        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const weeklyStats = await Submission.aggregate([
+          { $match: { userId: { $in: memberIds }, status: 'Accepted', submittedAt: { $gte: oneWeekAgo } } },
+          { $group: { _id: { userId: '$userId', challengeId: '$challengeId' } } },
+          { $group: { _id: '$_id.userId', weeklySolved: { $sum: 1 } } }
+        ]);
+        weeklyStats.forEach(s => {
+          weeklyByUser[s._id.toString()] = s.weeklySolved;
+        });
+      } catch (aggErr) {
+        console.warn('Weekly stats aggregation failed (non-fatal):', aggErr.message);
+      }
+
       clan.members = clan.members.map(m => ({
         ...m,
-        points: pointsByUser[m._id.toString()] || 0
+        points: m.points || 0,
+        weeklySolved: weeklyByUser[m._id.toString()] || 0
       }));
       clan.totalPoints = totalClanPoints;
     } else {
@@ -173,7 +166,7 @@ const getClans = async (req, res, next) => {
   try {
     const clansDocs = await Clan.find(getClanStatusFilter(req.query.status))
       .populate('chief', 'username email')
-      .populate('members', 'username email status codingLevel points profilePicture streak')
+      .populate('members', 'name username email status codingLevel points profilePicture streak')
       .populate('requests', 'username email')
       .populate('createdBy', 'username email')
       .populate('archivedBy', 'username email')
@@ -184,43 +177,14 @@ const getClans = async (req, res, next) => {
     // aggregation to get per-clan points totals — eliminates N+1 queries.
     const allMemberIds = clansDocs.flatMap((c) => c.members.map((m) => m._id));
 
-    const pointsRows = allMemberIds.length > 0
-      ? await Submission.aggregate([
-          { $match: { userId: { $in: allMemberIds }, status: 'Accepted' } },
-          {
-            $group: {
-              _id: { userId: '$userId', challengeId: '$challengeId' }
-            }
-          },
-          {
-            $lookup: {
-              from: 'challenges',
-              localField: '_id.challengeId',
-              foreignField: '_id',
-              as: 'challenge',
-            },
-          },
-          { $unwind: '$challenge' },
-          {
-            $group: {
-              _id: '$_id.userId',
-              totalPoints: { $sum: '$challenge.points' },
-            },
-          },
-        ])
-      : [];
 
-    // Build a userId -> points lookup map
-    const pointsByUser = {};
-    pointsRows.forEach((r) => { pointsByUser[r._id.toString()] = r.totalPoints; });
 
     const clans = clansDocs.map((clanDoc) => {
       const clan = clanDoc.toObject();
       let totalClanPoints = 0;
       clan.members = clan.members.map(m => {
-        const p = pointsByUser[m._id.toString()] || 0;
-        totalClanPoints += p;
-        return { ...m, points: p };
+        totalClanPoints += m.points || 0;
+        return { ...m, points: m.points || 0 };
       });
       clan.totalPoints = totalClanPoints;
       return clan;
@@ -237,7 +201,7 @@ const getClan = async (req, res, next) => {
   try {
     const clanDoc = await Clan.findById(req.params.id)
       .populate('chief', 'username email')
-      .populate('members', 'username email status codingLevel points profilePicture streak')
+      .populate('members', 'name username email status codingLevel points profilePicture streak')
       .populate('requests', 'username email')
       .populate('createdBy', 'username email')
       .populate('archivedBy', 'username email')
@@ -251,38 +215,30 @@ const getClan = async (req, res, next) => {
 
     const memberIds = clan.members.map(m => m._id);
     if (memberIds.length > 0) {
-      const stats = await Submission.aggregate([
-        { $match: { userId: { $in: memberIds }, status: 'Accepted' } },
-        {
-          $group: {
-            _id: { userId: '$userId', challengeId: '$challengeId' }
-          }
-        },
-        {
-          $lookup: {
-            from: 'challenges',
-            localField: '_id.challengeId',
-            foreignField: '_id',
-            as: 'challenge',
-          },
-        },
-        { $unwind: '$challenge' },
-        {
-          $group: {
-            _id: '$_id.userId',
-            totalPoints: { $sum: '$challenge.points' },
-          },
-        },
-      ]);
-      const pointsByUser = {};
       let totalClanPoints = 0;
-      stats.forEach(s => {
-        pointsByUser[s._id.toString()] = s.totalPoints;
-        totalClanPoints += s.totalPoints;
+      clan.members.forEach(m => {
+        totalClanPoints += m.points || 0;
       });
+
+      let weeklyByUser = {};
+      try {
+        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const weeklyStats = await Submission.aggregate([
+          { $match: { userId: { $in: memberIds }, status: 'Accepted', submittedAt: { $gte: oneWeekAgo } } },
+          { $group: { _id: { userId: '$userId', challengeId: '$challengeId' } } },
+          { $group: { _id: '$_id.userId', weeklySolved: { $sum: 1 } } }
+        ]);
+        weeklyStats.forEach(s => {
+          weeklyByUser[s._id.toString()] = s.weeklySolved;
+        });
+      } catch (aggErr) {
+        console.warn('getClan weekly stats failed (non-fatal):', aggErr.message);
+      }
+
       clan.members = clan.members.map(m => ({
         ...m,
-        points: pointsByUser[m._id.toString()] || 0
+        points: m.points || 0,
+        weeklySolved: weeklyByUser[m._id.toString()] || 0
       }));
       clan.totalPoints = totalClanPoints;
     } else {
@@ -301,11 +257,91 @@ const getClanLeaderboard = async (req, res, next) => {
     const { window = 'all' } = req.query;
     const clanFilter = getClanStatusFilter(req.query.status);
 
+    if (window === 'all') {
+      const clans = await Clan.aggregate([
+        { $match: clanFilter },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'chief',
+            foreignField: '_id',
+            as: 'chief',
+          },
+        },
+        {
+          $unwind: {
+            path: '$chief',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'members',
+            foreignField: '_id',
+            as: 'memberDetails',
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            tag: 1,
+            description: 1,
+            createdBy: 1,
+            archivedAt: 1,
+            archivedBy: 1,
+            restoredAt: 1,
+            restoredBy: 1,
+            status: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            notices: 1,
+            requests: 1,
+            chief: {
+              $cond: {
+                if: '$chief._id',
+                then: {
+                  _id: '$chief._id',
+                  username: '$chief.username',
+                },
+                else: null,
+              },
+            },
+            members: 1,
+            memberCount: { $size: { $ifNull: ['$members', []] } },
+            totalPoints: { $sum: '$memberDetails.points' },
+            solvedCount: { $sum: '$memberDetails.solvedProblems' },
+          },
+        },
+      ]);
+
+      if (clans.length === 0) {
+        return sendSuccess(res, { data: [] });
+      }
+
+      clans.sort((a, b) => b.totalPoints - a.totalPoints || b.solvedCount - a.solvedCount || String(a._id).localeCompare(String(b._id)));
+      let currentRank = 1;
+      clans.forEach((c, i) => {
+        if (i > 0) {
+          const prev = clans[i - 1];
+          if (c.totalPoints !== prev.totalPoints || c.solvedCount !== prev.solvedCount) {
+            currentRank++;
+          }
+        }
+        c.rank = currentRank;
+      });
+
+      return sendSuccess(res, { data: clans });
+    }
+
+    // For Weekly (7d) or Monthly (30d)
     let dateMatch = {};
     if (window === '7d') {
       dateMatch = { submittedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
     } else if (window === '30d') {
-      dateMatch = { submittedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
+      const now = new Date();
+      dateMatch = { submittedAt: { $gte: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) } };
     }
 
     // Fetch clans (lightweight — only ids, members array, chief ref, name, tag, status)
@@ -328,25 +364,52 @@ const getClanLeaderboard = async (req, res, next) => {
     // Single aggregation across all members — group by userId
     const userStats = allMemberIds.length > 0
       ? await Submission.aggregate([
-          { $match: { userId: { $in: allMemberIds }, status: 'Accepted', ...dateMatch } },
-          {
-            $lookup: {
-              from: 'challenges',
-              localField: 'challengeId',
-              foreignField: '_id',
-              as: 'challenge',
-            },
+        { $match: { userId: { $in: allMemberIds }, status: 'Accepted', ...dateMatch } },
+        {
+          $lookup: {
+            from: 'challenges',
+            localField: 'challengeId',
+            foreignField: '_id',
+            as: 'challenge',
           },
-          { $unwind: '$challenge' },
-          {
-            $group: {
-              _id: '$userId',
-              solvedCount: { $sum: 1 },
-              totalPoints: { $sum: '$challenge.points' },
-            },
+        },
+        { $unwind: '$challenge' },
+        {
+          $group: {
+            _id: '$userId',
+            solvedCount: { $sum: 1 }
           },
-        ])
+        },
+      ])
       : [];
+
+    // Get the points for these members within the time window from XpLog
+    const XpLog = require('../users/XpLog.model');
+
+    let xpDateMatch = {};
+    if (window === '7d') {
+      xpDateMatch = { createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } };
+    } else if (window === '30d') {
+      const now = new Date();
+      xpDateMatch = { createdAt: { $gte: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) } };
+    }
+
+    const xpStats = allMemberIds.length > 0
+      ? await XpLog.aggregate([
+        { $match: { userId: { $in: allMemberIds }, ...xpDateMatch } },
+        {
+          $group: {
+            _id: '$userId',
+            totalPoints: { $sum: '$amount' }
+          }
+        }
+      ])
+      : [];
+
+    const windowPointsMap = {};
+    xpStats.forEach(x => {
+      windowPointsMap[x._id.toString()] = x.totalPoints || 0;
+    });
 
     // Build userId -> stats map
     const statsByUser = {};
@@ -361,8 +424,8 @@ const getClanLeaderboard = async (req, res, next) => {
         const s = statsByUser[uid.toString()];
         if (s) {
           solvedCount += s.solvedCount;
-          totalPoints += s.totalPoints;
         }
+        totalPoints += windowPointsMap[uid.toString()] || 0;
       });
       return {
         ...clan,
@@ -373,7 +436,16 @@ const getClanLeaderboard = async (req, res, next) => {
     });
 
     enriched.sort((a, b) => b.totalPoints - a.totalPoints || b.solvedCount - a.solvedCount || String(a._id).localeCompare(String(b._id)));
-    enriched.forEach((c, i) => { c.rank = i + 1; });
+    let currentRank = 1;
+    enriched.forEach((c, i) => {
+      if (i > 0) {
+        const prev = enriched[i - 1];
+        if (c.totalPoints !== prev.totalPoints || c.solvedCount !== prev.solvedCount) {
+          currentRank++;
+        }
+      }
+      c.rank = currentRank;
+    });
 
     return sendSuccess(res, { data: enriched });
   } catch (err) {
@@ -386,7 +458,7 @@ const getClanAdminStats = async (req, res, next) => {
   try {
     const clan = await Clan.findById(req.params.id)
       .populate('chief', 'username email')
-      .populate('members', 'username email status codingLevel points regNo branch year profilePicture streak')
+      .populate('members', 'name username email status codingLevel points regNo branch year profilePicture streak')
       .populate('requests', 'username email regNo branch year')
       .populate('createdBy', 'username email')
       .populate('archivedBy', 'username email')
@@ -850,7 +922,7 @@ const removeChief = async (req, res, next) => {
       }
 
       await reconcileChiefRoleForUser(previousChiefId, { session });
-      
+
       return null;
     });
 

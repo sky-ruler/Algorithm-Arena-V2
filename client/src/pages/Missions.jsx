@@ -9,6 +9,13 @@ import SkeletonCard from '../components/SkeletonCard';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/useAuth';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 
 const buildChallengeQuery = ({
   page,
@@ -17,14 +24,13 @@ const buildChallengeQuery = ({
   difficulty,
   category,
   setId,
-  sortBy,
-  sortDir,
 }) => {
   const params = new URLSearchParams();
   params.set("page", page);
   params.set("limit", limit);
-  params.set("sortBy", sortBy);
-  params.set("sortDir", sortDir);
+  // Always fetch by createdAt desc; sorting is handled client-side
+  params.set("sortBy", "createdAt");
+  params.set("sortDir", "desc");
   if (search) params.set("search", search);
   if (difficulty) params.set("difficulty", difficulty);
   if (category) params.set("category", category);
@@ -43,7 +49,43 @@ const FALLBACK_CREATED_AT = '2026-01-01T00:00:00.000Z';
 const getRGB = (d) =>
   d === "Easy" ? "34,197,94" : d === "Medium" ? "234,179,8" : d === "Hard" ? "239,68,68" : "99,102,241";
 
+const getLocalDrafts = () => {
+  const drafts = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("challenge-draft:")) {
+        const challengeId = key.split(":")[1];
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          const hasCode = draft.codeByLang && Object.values(draft.codeByLang).some(c => c && c.trim());
+          if (draft.repoUrl?.trim() || hasCode) {
+            drafts.push({
+              _id: `draft-${challengeId}`,
+              challengeId: {
+                _id: challengeId,
+                title: draft.challengeTitle || "Unknown Challenge",
+                difficulty: draft.challengeDifficulty || "Easy",
+                points: draft.challengePoints || 0,
+              },
+              status: "Attempted",
+              submittedAt: draft.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading drafts from localStorage", e);
+  }
+  return drafts;
+};
+
+const DIFF_ORDER = { Easy: 1, Medium: 2, Hard: 3 };
+
 const Missions = () => {
+  const [now] = useState(() => Date.now());
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialSetId = searchParams.get('setId') || '';
@@ -66,23 +108,10 @@ const Missions = () => {
 
   const activeSet = activeSetQuery.data;
 
-  const [filters, setFilters] = useState({
-    page: 1,
-    limit: 50, // Increase limit when grouping to show all related items
-    search: "",
-    difficulty: "",
-    category: "",
-    status: "All", // 'All', 'Accepted', 'Pending'
-    setId: searchParams.get('setId') || '',
-    sortBy: "createdAt",
-    sortDir: "desc",
-    grouping: "none", // 'none', 'weekly', 'monthly'
-  });
-  const [viewMode, setViewMode] = useState(
-    () => localStorage.getItem("missions:view") || "grid",
-  );
-
-  const queryKey = useMemo(() => ["challenges", filters], [filters]);
+  const clearSetFilter = () => {
+    navigate('/missions', { replace: true });
+    setFilters(prev => ({ ...prev, setId: '' }));
+  };
 
   const submissionsQuery = useQuery({
     queryKey: ['my-submissions'],
@@ -97,43 +126,85 @@ const Missions = () => {
   const subsMap = useMemo(() => {
     const map = {};
     (submissionsQuery.data || []).forEach(sub => {
-      const challengeIdStr = typeof sub.challengeId === 'object' && sub.challengeId !== null
-        ? sub.challengeId._id
+      if (!sub.challengeId) return;
+      const cid = typeof sub.challengeId === 'object'
+        ? (sub.challengeId._id || sub.challengeId.id)
         : sub.challengeId;
-      if (!challengeIdStr) return;
-
-      if (!map[challengeIdStr]) {
-        map[challengeIdStr] = {};
+      if (!cid) return;
+      const cidStr = cid.toString();
+      
+      // We iterate newest to oldest. If not in map, it's the newest status.
+      // If it's already in map, we only overwrite if the older submission was 'Accepted'.
+      if (!map[cidStr]) {
+        map[cidStr] = sub.status;
+      } else if (sub.status === 'Accepted') {
+        map[cidStr] = 'Accepted';
+      }
+      
+      const titleKey = sub.challengeId?.title?.trim().toLowerCase();
+      if (titleKey) {
+        if (!map[titleKey]) {
+          map[titleKey] = sub.status;
+        } else if (sub.status === 'Accepted') {
+          map[titleKey] = 'Accepted';
+        }
       }
       map[challengeIdStr][sub.status] = true;
     });
     return map;
   }, [submissionsQuery.data]);
 
-  const clearSetFilter = () => {
-    navigate('/missions', { replace: true });
-    setFilters(prev => ({ ...prev, setId: '' }));
-  };
+  const drafts = useMemo(() => getLocalDrafts(), []);
 
-  // Synced with searchParams using react-router-dom state instead of synchronous effect where possible,
-  // or simple location-based dependency.
-  useEffect(() => {
-    const currentSetId = searchParams.get('setId') || '';
-    if (filters.setId !== currentSetId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFilters(prev => ({ ...prev, setId: currentSetId, page: 1 }));
+  const getBadge = (chId) => {
+    if (subsMap[chId] === 'Accepted') {
+      return { label: 'Solved', cls: 'bg-green-500/10 text-green-400 border-green-500/20' };
     }
-  }, [searchParams, filters.setId]);
+    const hasDraft = drafts.some((d) => {
+      const dcid = d.challengeId?._id || d.challengeId;
+      return dcid && dcid.toString() === chId.toString();
+    });
+    if (hasDraft) {
+      return { label: 'Attempted', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+    }
+    if (subsMap[chId] === 'Rejected') {
+      return { label: 'Rejected', cls: 'bg-red-500/10 text-red-400 border-red-500/20' };
+    }
+    if (subsMap[chId] === 'Pending') {
+      return { label: 'Pending Review', cls: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' };
+    }
+    return null;
+  };
+  const [filters, setFilters] = useState({
+    page: 1,
+    limit: 6,
+    search: "",
+    difficulty: "",
+    category: "",
+    status: "All", // 'All', 'Accepted', 'Pending'
+    setId: initialSetId,
+    sortBy: "deadline",
+    sortDir: "asc",
+    grouping: "none", // 'none', 'weekly', 'monthly'
+  });
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem("missions:view") || "grid",
+  );
 
   useEffect(() => {
     localStorage.setItem("missions:view", viewMode);
   }, [viewMode]);
 
+  const queryKey = useMemo(() => ["challenges", filters], [filters]);
+
   const challengesQuery = useQuery({
     queryKey,
     queryFn: async () => {
       try {
-        const qs = buildChallengeQuery(filters);
+        const effectiveFilters = filters.grouping !== 'none'
+          ? { ...filters, limit: 500 }
+          : filters;
+        const qs = buildChallengeQuery(effectiveFilters);
         const res = await api.get(`/api/challenges?${qs}`);
         const data = res.data.data || [];
 
@@ -152,13 +223,14 @@ const Missions = () => {
   // When filtering by setId, if no standalone Challenge docs exist, fall back
   // to the questions embedded in the QuestionSet document itself.
   const challenges = useMemo(() => {
-    const apiData = challengesQuery.data?.data || [];
+    let apiData = challengesQuery.data?.data || [];
 
     if (filters.setId) {
-      if (apiData.length > 0) return apiData;
-      // Fallback: use the embedded questions from the question set
-      if (activeSet?.questions?.length) {
-        return activeSet.questions.map((q, i) => ({
+      if (apiData.length > 0) {
+        // use apiData
+      } else if (activeSet?.questions?.length) {
+        // Fallback: use the embedded questions from the question set
+        apiData = activeSet.questions.map((q, i) => ({
           _id: `set-q-${i}`,
           title: q.title,
           description: q.description || '',
@@ -172,44 +244,22 @@ const Missions = () => {
           createdAt: activeSet.createdAt,
           questionSetId: filters.setId,
         }));
+      } else {
+        apiData = [];
       }
-      return [];
     }
 
-    // Deduplication logic for "All Missions"
-    const byTitle = {};
-    const now = new Date();
-    
-    apiData.forEach(ch => {
-      const title = ch.title.toLowerCase();
-      if (!byTitle[title]) {
-        byTitle[title] = [];
+    // Group and filter out duplicate questions by title (case-insensitive)
+    const seen = new Set();
+    const unique = [];
+    for (const ch of apiData) {
+      const titleKey = ch.title?.trim().toLowerCase();
+      if (titleKey && !seen.has(titleKey)) {
+        seen.add(titleKey);
+        unique.push(ch);
       }
-      byTitle[title].push(ch);
-    });
-
-    const deduped = Object.values(byTitle).map(group => {
-      if (group.length === 1) return group[0];
-      
-      // Filter those with a future deadline
-      const upcoming = group.filter(c => c.questionSetId && c.questionSetId.deadline && new Date(c.questionSetId.deadline) > now);
-      
-      if (upcoming.length > 0) {
-        // Sort by earliest deadline first
-        upcoming.sort((a, b) => new Date(a.questionSetId.deadline) - new Date(b.questionSetId.deadline));
-        return upcoming[0];
-      }
-      
-      // If all have passed, return the most recent one (latest deadline)
-      group.sort((a, b) => {
-        const dA = a.questionSetId?.deadline ? new Date(a.questionSetId.deadline) : new Date(0);
-        const dB = b.questionSetId?.deadline ? new Date(b.questionSetId.deadline) : new Date(0);
-        return dB - dA;
-      });
-      return group[0];
-    });
-
-    return deduped;
+    }
+    return unique;
   }, [challengesQuery.data, filters.setId, activeSet]);
 
   const meta = challengesQuery.data?.meta || { page: 1, totalPages: 1, total: challenges.length };
@@ -254,23 +304,76 @@ const Missions = () => {
 
   // Apply the Solved / Pending Review status filter client-side. The challenges
   // API has no per-user status, so we match against the user's own submissions.
-  // By default (All), hide solved challenges so users can focus on unsolved ones.
-  // When status === 'Accepted', show only the solved ones.
   const statusFilteredChallenges = useMemo(() => {
     if (filters.status === 'Accepted') {
-      return challenges.filter((ch) => subsMap[ch._id]?.Accepted);
+      return challenges.filter((ch) => {
+        const chId = ch._id?.toString();
+        const titleKey = ch.title?.trim().toLowerCase();
+        return subsMap[chId] === 'Accepted' || (titleKey && subsMap[titleKey] === 'Accepted');
+      });
     }
     if (filters.status === 'Pending') {
-      return challenges.filter((ch) => subsMap[ch._id]?.Pending);
+      return challenges.filter((ch) => {
+        const chId = ch._id?.toString();
+        const titleKey = ch.title?.trim().toLowerCase();
+        return subsMap[chId] === 'Pending' || (titleKey && subsMap[titleKey] === 'Pending');
+      });
     }
-    // 'All' status: Hide solved (Accepted) challenges so they don't clutter the dashboard
-    return challenges.filter((ch) => !subsMap[ch._id]?.Accepted);
+    if (filters.status === 'Rejected') {
+      return challenges.filter((ch) => {
+        const chId = ch._id?.toString();
+        const titleKey = ch.title?.trim().toLowerCase();
+        return subsMap[chId] === 'Rejected' || (titleKey && subsMap[titleKey] === 'Rejected');
+      });
+    }
+    // Default: Hide already solved and pending challenges from the dashboard
+    return challenges.filter((ch) => {
+      const chId = ch._id?.toString();
+      const titleKey = ch.title?.trim().toLowerCase();
+      const statusById = subsMap[chId];
+      const statusByTitle = titleKey ? subsMap[titleKey] : null;
+      const isSolved = statusById === 'Accepted' || statusByTitle === 'Accepted';
+      const isPending = statusById === 'Pending' || statusByTitle === 'Pending';
+      return !isSolved && !isPending;
+    });
   }, [challenges, filters.status, subsMap]);
 
-  const groupedChallenges = useMemo(() => {
-    if (filters.grouping === 'none') return { "All Missions": statusFilteredChallenges };
+  // Sort by selected criteria. Deadline is P1 only when 'deadline' is selected.
+  const sortedChallenges = useMemo(() => {
+    return [...statusFilteredChallenges].sort((a, b) => {
+      if (filters.sortBy === 'deadline') {
+        // Sort by question-set deadline (earliest upcoming first, then past, then no-deadline last)
+        const dlA = a.questionSetId?.deadline ? new Date(a.questionSetId.deadline).getTime() : Infinity;
+        const dlB = b.questionSetId?.deadline ? new Date(b.questionSetId.deadline).getTime() : Infinity;
+        
+        const isPastA = dlA < now;
+        const isPastB = dlB < now;
 
-    return statusFilteredChallenges.reduce((acc, ch) => {
+        if (isPastA !== isPastB) return isPastA ? 1 : -1; // Upcoming before past
+        if (dlA !== dlB) return dlA - dlB; // Ascending order
+      } else if (filters.sortBy === 'difficulty') {
+        const dA = DIFF_ORDER[a.difficulty] || 4;
+        const dB = DIFF_ORDER[b.difficulty] || 4;
+        if (dA !== dB) return dA - dB;
+      } else if (filters.sortBy === 'points') {
+        if ((a.points || 0) !== (b.points || 0)) return (b.points || 0) - (a.points || 0);
+      } else if (filters.sortBy === 'title') {
+        const cmp = (a.title || '').localeCompare(b.title || '');
+        if (cmp !== 0) return cmp;
+      } else if (filters.sortBy === 'createdAt') {
+        const tA = new Date(a.createdAt || 0).getTime();
+        const tB = new Date(b.createdAt || 0).getTime();
+        if (tA !== tB) return tB - tA;
+      }
+      // Tie-breaker: newest first
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+  }, [statusFilteredChallenges, filters.sortBy, now]);
+
+  const groupedChallenges = useMemo(() => {
+    if (filters.grouping === 'none') return { "All Missions": sortedChallenges };
+
+    return sortedChallenges.reduce((acc, ch) => {
       const date = new Date(ch.createdAt || FALLBACK_CREATED_AT);
       let key = "";
 
@@ -293,7 +396,7 @@ const Missions = () => {
       acc[key].push(ch);
       return acc;
     }, {});
-  }, [statusFilteredChallenges, filters.grouping]);
+  }, [sortedChallenges, filters.grouping]);
 
   const MotionBlock = motion.div;
 
@@ -351,36 +454,55 @@ const Missions = () => {
           onChange={(e) => handleFilterChange("category", e.target.value)}
         />
 
-        <select
-          className="field-select px-3 text-xs w-full sm:w-auto h-11 py-0"
-          value={filters.limit}
-          onChange={(e) => handleFilterChange("limit", Number(e.target.value))}
-        >
-          <option value={6}>6 / page</option>
-          <option value={12}>12 / page</option>
-          <option value={24}>24 / page</option>
-        </select>
+        <div className="w-full sm:w-auto h-11">
+          <Select
+            value={String(filters.limit)}
+            onValueChange={(val) => handleFilterChange("limit", Number(val))}
+          >
+            <SelectTrigger className="w-full sm:w-[130px] h-full text-xs bg-black/10 dark:bg-white/5 border-none">
+              <SelectValue placeholder="Items per page" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="6">6 / page</SelectItem>
+              <SelectItem value="12">12 / page</SelectItem>
+              <SelectItem value="24">24 / page</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <select
-          className="field-select px-3 text-xs w-full sm:w-auto h-11 py-0"
-          value={filters.sortBy}
-          onChange={(e) => handleFilterChange("sortBy", e.target.value)}
-        >
-          <option value="createdAt">Date (Newest)</option>
-          <option value="points">XP Points</option>
-          <option value="difficulty">Difficulty</option>
-          <option value="title">Title</option>
-        </select>
+        <div className="w-full sm:w-auto h-11">
+          <Select
+            value={filters.sortBy}
+            onValueChange={(val) => handleFilterChange("sortBy", val)}
+          >
+            <SelectTrigger className="w-full sm:w-[140px] h-full text-xs bg-black/10 dark:bg-white/5 border-none">
+              <SelectValue placeholder="Sort By" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="deadline">Deadline</SelectItem>
+              <SelectItem value="difficulty">Difficulty</SelectItem>
+              <SelectItem value="createdAt">Newest</SelectItem>
+              <SelectItem value="points">XP Points</SelectItem>
+              <SelectItem value="title">Title</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <select
-          className="field-select px-3 text-xs w-full sm:w-auto h-11 py-0"
-          value={filters.grouping}
-          onChange={(e) => handleFilterChange("grouping", e.target.value)}
-        >
-          <option value="none">No Grouping</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
+        <div className="w-full sm:w-auto h-11">
+          <Select
+            value={filters.grouping}
+            onValueChange={(val) => handleFilterChange("grouping", val)}
+          >
+            <SelectTrigger className="w-full sm:w-[140px] h-full text-xs bg-black/10 dark:bg-white/5 border-none">
+              <SelectValue placeholder="Grouping" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No Grouping</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {activeSet && (
           <button
             type="button"
@@ -408,9 +530,12 @@ const Missions = () => {
           </div>
 
           {/* Status Tabs */}
-          <div className="flex bg-glass-border/30 rounded-lg p-1">
-            {['All', 'Accepted', 'Pending'].map(st => {
-              const label = st === 'Accepted' ? 'Solved' : st === 'Pending' ? 'Pending Review' : 'All';
+          <div className="flex bg-glass-border/30 rounded-lg p-1 flex-wrap gap-1">
+            {['All', 'Accepted', 'Pending', 'Rejected'].map(st => {
+              const label =
+                st === 'Accepted' ? 'Solved' :
+                st === 'Pending' ? 'Pending Review' :
+                st === 'Rejected' ? 'Rejected' : 'Remaining';
               return (
                 <button
                   key={st}
@@ -463,10 +588,20 @@ const Missions = () => {
             <SkeletonCard />
             <SkeletonCard />
           </div>
-        ) : challenges.length === 0 ? (
+        ) : sortedChallenges.length === 0 ? (
           <EmptyState
-            title="No challenges found"
-            description="Try changing filters, or ask admin to publish new challenges."
+            title={
+              filters.status === 'Accepted' ? "No solved missions yet" :
+              filters.status === 'Pending' ? "No pending reviews" :
+              filters.status === 'Rejected' ? "No rejected missions" :
+              "You have attempted all the questions!"
+            }
+            description={
+              filters.status === 'Accepted' ? "Start solving challenges to see them here." :
+              filters.status === 'Pending' ? "You don't have any challenges waiting for review." :
+              filters.status === 'Rejected' ? "Great job! You don't have any rejected solutions." :
+              "No missions found for the current filters. Great job pushing your limits!"
+            }
             actionLabel="Reset Filters"
             onAction={() =>
               setFilters({
@@ -475,8 +610,8 @@ const Missions = () => {
                 search: "",
                 difficulty: "",
                 category: "",
-                sortBy: "createdAt",
-                sortDir: "desc",
+                sortBy: "deadline",
+                sortDir: "asc",
               })
             }
           />
@@ -515,22 +650,19 @@ const Missions = () => {
                               </span>
 
                               <div className="flex items-center gap-2">
-                                {subsMap[challenge._id]?.Accepted && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20">Solved</span>
-                                )}
-                                {subsMap[challenge._id]?.Pending && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Pending Review</span>
-                                )}
-                                {subsMap[challenge._id]?.Rejected && !subsMap[challenge._id]?.Accepted && !subsMap[challenge._id]?.Pending && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">Attempted</span>
-                                )}
+                                {(() => {
+                                  const badge = getBadge(challenge._id);
+                                  return badge && (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
+                                  );
+                                })()}
                                 <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
                               </div>
                             </div>
                             <div className="flex items-start justify-between gap-3 mt-2">
                               <h2 className="text-xl font-bold group-hover:text-accent transition-colors line-clamp-2 flex-1 font-h2">{challenge.title}</h2>
                               {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 flex-shrink-0 mt-1">New</span>
+                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-1">New</span>
                               )}
                             </div>
                             <div className="flex flex-wrap gap-2 mt-auto pt-4">
@@ -565,7 +697,7 @@ const Missions = () => {
                               <div className="flex items-start gap-3">
                                 <h2 className="text-lg font-bold group-hover:text-accent transition-colors line-clamp-1 flex-1 font-h2">{challenge.title}</h2>
                                 {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 flex-shrink-0 mt-0.5">New</span>
+                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-0.5">New</span>
                                 )}
                               </div>
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -578,15 +710,12 @@ const Missions = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                              {subsMap[challenge._id]?.Accepted && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 hidden sm:block">Solved</span>
-                              )}
-                              {subsMap[challenge._id]?.Pending && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hidden sm:block">Pending Review</span>
-                              )}
-                              {subsMap[challenge._id]?.Rejected && !subsMap[challenge._id]?.Accepted && !subsMap[challenge._id]?.Pending && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 hidden sm:block">Attempted</span>
-                              )}
+                              {(() => {
+                                const badge = getBadge(challenge._id);
+                                return badge && (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls} hidden sm:block`}>{badge.label}</span>
+                                );
+                              })()}
                               <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                                 challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
                                 challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
