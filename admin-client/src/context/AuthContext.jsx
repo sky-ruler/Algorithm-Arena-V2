@@ -53,7 +53,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(normalizedUser));
       setUser(normalizedUser);
       return normalizedUser;
-    } catch (err) {
+    }
+    catch (err) {
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
         clearSession();
