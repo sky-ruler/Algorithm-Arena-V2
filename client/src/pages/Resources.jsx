@@ -29,21 +29,19 @@ const Resources = () => {
 
   const getIcon = (type) => {
     if (type === 'PDF') return <FiFileText className="text-red-400" />;
-    if (type === 'JSON') return <FiFileText className="text-emerald-400" />;
     return <FiLink className="text-blue-400" />;
   };
 
   const getBlobClass = (type) => {
     if (type === 'PDF') return 'bg-red-500/10 dark:bg-red-500/20';
-    if (type === 'JSON') return 'bg-emerald-500/10 dark:bg-emerald-500/20';
     return 'bg-blue-500/10 dark:bg-blue-500/20';
   };
 
   const filteredResources = resources.filter(res => {
+    if (res.type === 'JSON') return false; // Filter out JSON completely
     if (activeType === 'All') return true;
     if (activeType === 'PDF') return res.type === 'PDF';
-    if (activeType === 'JSON') return res.type === 'JSON';
-    if (activeType === 'Link') return res.type !== 'PDF' && res.type !== 'JSON';
+    if (activeType === 'Link') return res.type !== 'PDF';
     return true;
   });
 
@@ -63,11 +61,10 @@ const Resources = () => {
             <button
               key={folder}
               onClick={() => setActiveFolder(folder === 'All' ? '' : folder)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap border ${
-                (activeFolder === folder || (folder === 'All' && !activeFolder))
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap border ${(activeFolder === folder || (folder === 'All' && !activeFolder))
                   ? 'bg-accent/10 text-accent dark:border-white/20 shadow-sm'
                   : 'bg-black/[0.02] dark:bg-white/5 text-secondary border-transparent hover:bg-black/[0.04] dark:hover:bg-white/10'
-              }`}
+                }`}
             >
               {folder}
             </button>
@@ -79,7 +76,6 @@ const Resources = () => {
           {[
             { id: 'All', label: 'All', icon: FiFolder },
             { id: 'PDF', label: 'PDFs', icon: FiFileText, iconColor: 'text-red-400' },
-            { id: 'JSON', label: 'JSONs', icon: FiFileText, iconColor: 'text-emerald-400' },
             { id: 'Link', label: 'Links', icon: FiLink, iconColor: 'text-blue-400' },
           ].map(type => {
             const Icon = type.icon;
@@ -88,11 +84,10 @@ const Resources = () => {
               <button
                 key={type.id}
                 onClick={() => setActiveType(type.id)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                  isActive
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black transition-all ${isActive
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-secondary hover:text-primary'
-                }`}
+                  }`}
               >
                 <Icon size={13} className={isActive ? 'text-white' : type.iconColor} />
                 <span>{type.label}</span>
@@ -117,7 +112,7 @@ const Resources = () => {
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 relative rounded-xl bg-black/[0.02] dark:bg-white/5 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-xl shrink-0 overflow-visible">
                       {/* Colored blurred gradient blob right behind the icon itself */}
-                      <div 
+                      <div
                         className={`absolute inset-0.5 rounded-full blur-[10px] opacity-60 dark:opacity-75 pointer-events-none transition-transform duration-300 group-hover:scale-125 z-0 ${getBlobClass(res.type)}`}
                       />
                       <span className="relative z-10">{getIcon(res.type)}</span>
