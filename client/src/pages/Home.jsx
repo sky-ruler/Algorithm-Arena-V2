@@ -216,7 +216,7 @@ const Home = () => {
   const homeRef = useRef(null);
   const { scrollY } = useScroll();
   const heroY = useTransform(scrollY, [0, 400], [0, -60]);
-  const heroOpacity = useTransform(scrollY, [0, 300], [1, 0.1]);
+  const heroOpacity = useTransform(scrollY, [0, 600], [1, 0]);
 
   useEffect(() => {
     const el = homeRef.current;
@@ -362,8 +362,17 @@ const Home = () => {
   }, [submissionsQuery.data, drafts]);
 
 
+  const isScrollable = !isAuthenticated
+    ? false
+    : (challengesQuery.isLoading || challenges.length > 0 || recentActivities.length > 0);
+
   return (
-    <div ref={homeRef} className="min-h-screen flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white">
+    <div
+      ref={homeRef}
+      className={`${
+        isScrollable ? "min-h-screen" : "h-screen"
+      } flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white`}
+    >
       <GridBackground />
 
       {/* Floating snippets — decorative only */}
@@ -432,7 +441,9 @@ const Home = () => {
       <motion.div
         ref={heroRef}
         style={{ y: heroY, opacity: heroOpacity }}
-        className="relative z-10 flex flex-col items-center justify-center text-center px-4 pt-16 pb-24"
+        className={`relative z-10 flex flex-col items-center justify-center text-center px-4 ${
+          isScrollable ? "pt-16 pb-24" : "flex-1"
+        }`}
       >
         {/* GDG badge */}
         <motion.div
@@ -582,14 +593,16 @@ const Home = () => {
       {/* ── Difficulty legend strip ── */}
 
       {/* Divider */}
-      <div
-        className="relative z-10 mx-auto w-full max-w-6xl px-6"
-        style={{
-          height: "2px",
-          background: `linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.3), transparent)`,
-          margin: "2rem auto",
-        }}
-      />
+      {isScrollable && (
+        <div
+          className="relative z-10 mx-auto w-full max-w-6xl px-6"
+          style={{
+            height: "2px",
+            background: `linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.3), transparent)`,
+            margin: "2rem auto",
+          }}
+        />
+      )}
 
       {/* ── Authenticated sections ── */}
       {isAuthenticated && (
