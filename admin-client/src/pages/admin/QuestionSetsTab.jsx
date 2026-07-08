@@ -256,7 +256,7 @@ const QuestionSetsTab = () => {
             onChange={(e) => setSolutionLangByKey((p) => ({ ...p, [editorKey]: e.target.value }))}
           >
             {LANGUAGE_OPTIONS.map((opt) => (
-              <option key={opt.key} value={opt.key}>{opt.label}</option>
+              <option key={opt.key} value={opt.key}>{opt.label}{opt.version && ` (${opt.version})`}</option>
             ))}
           </select>
         </div>

@@ -347,7 +347,7 @@ const ChallengesTab = () => {
           >
             {LANGUAGE_OPTIONS.map((opt) => (
               <option key={opt.key} value={opt.key}>
-                {opt.label}
+                {opt.label}{opt.version && ` (${opt.version})`}
               </option>
             ))}
           </select>

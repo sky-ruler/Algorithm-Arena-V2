@@ -1002,7 +1002,7 @@ const ChallengeDetails = () => {
                   <SelectContent>
                     {LANGUAGE_OPTIONS.map((opt) => (
                       <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                        {opt.label}
+                        {opt.label}{opt.version && ` (${opt.version})`}
                       </SelectItem>
                     ))}
                   </SelectContent>

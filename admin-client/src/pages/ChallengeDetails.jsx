@@ -750,7 +750,7 @@ const ChallengeDetails = () => {
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.key} value={opt.key} className="bg-white dark:bg-[#1a1a24] text-black dark:text-white">
-                    {opt.label}
+                    {opt.label}{opt.version && ` (${opt.version})`}
                   </option>
                 ))}
               </select>
