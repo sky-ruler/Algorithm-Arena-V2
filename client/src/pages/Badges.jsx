@@ -321,7 +321,7 @@ const Badges = () => {
               </div>
               <div>
                 <p className="text-2xl font-black text-primary">{totalUnlocked} <span className="text-tertiary text-base font-normal">/ {totalBadges}</span></p>
-                <p className="text-sm text-secondary">Badges unlocked</p>
+                <p className="text-sm text-secondary">{targetUsername && !isOwnProfile ? `${targetUsername}'s unlocked badges` : 'Badges unlocked'}</p>
               </div>
             </div>
             <div className="flex-1 max-w-xs space-y-1.5">
