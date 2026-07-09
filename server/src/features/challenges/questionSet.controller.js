@@ -76,6 +76,8 @@ const createQuestionSet = async (req, res, next) => {
         codeSnippets: q.codeSnippets || [],
         solutions: q.solutions || [],
         functionName: q.functionName || '',
+        params: q.params || [],
+        returnType: q.returnType || '',
         testCases: q.testCases || [],
         questionSetId: set._id
       }));
@@ -116,6 +118,8 @@ const buildChallengePayload = (q, setId) => ({
   codeSnippets: q.codeSnippets || [],
   solutions: q.solutions || [],
   functionName: q.functionName || '',
+  params: q.params || [],
+  returnType: q.returnType || '',
   testCases: q.testCases || [],
   questionSetId: setId,
 });

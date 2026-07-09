@@ -20,6 +20,11 @@ const testCaseSchema = z.object({
   expected: z.string().min(1),
 });
 
+const paramSchema = z.object({
+  name: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+});
+
 const challengeCreateSchema = {
   body: z.object({
     title: z.string().trim().min(3).max(200),
@@ -31,9 +36,11 @@ const challengeCreateSchema = {
     codeSnippets: z.array(codeSnippetSchema).optional().default([]),
     solutions: z.array(solutionSchema).optional().default([]),
     functionName: z.string().trim().optional().default(''),
+    params: z.array(paramSchema).optional().default([]),
+    returnType: z.string().trim().optional().default(''),
     testCases: z.array(testCaseSchema).optional().default([]),
     link: z.string().url().optional().or(z.literal('')),
-    questionSetId: z.string().length(24).optional(), 
+    questionSetId: z.string().length(24).optional(),
   }),
 };
 
@@ -49,6 +56,8 @@ const challengeUpdateSchema = {
       codeSnippets: z.array(codeSnippetSchema).optional(),
       solutions: z.array(solutionSchema).optional(),
       functionName: z.string().trim().optional(),
+      params: z.array(paramSchema).optional(),
+      returnType: z.string().trim().optional(),
       testCases: z.array(testCaseSchema).optional(),
       link: z.string().url().optional().or(z.literal('')),
       questionSetId: z.string().length(24).optional(),

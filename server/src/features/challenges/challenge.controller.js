@@ -155,6 +155,8 @@ const getChallenges = async (req, res, next) => {
           codeSnippets: q.codeSnippets || [],
           solutions: q.solutions || [],
           functionName: q.functionName || '',
+          params: q.params || [],
+          returnType: q.returnType || '',
           testCases: q.testCases || [],
           questionSetId: questionSet._id,
         }));
