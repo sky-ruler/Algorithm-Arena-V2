@@ -114,10 +114,12 @@ exports.fetchLeetCodeDetails = async (slug) => {
     // Parse metaData for function name + param info
     let functionName = "";
     let params = [];
+    let returnType = "";
     try {
       const meta = JSON.parse(question.metaData || "{}");
       functionName = meta.name || "";
       params = meta.params || [];
+      returnType = meta.return?.type || "";
     } catch { /* leave empty */ }
 
     // Build testCases from exampleTestcaseList + HTML expected outputs
@@ -135,6 +137,8 @@ exports.fetchLeetCodeDetails = async (slug) => {
       topicTags: question.topicTags,
       codeSnippets: question.codeSnippets,
       functionName,
+      params,
+      returnType,
       testCases,
     };
   } catch (error) {
