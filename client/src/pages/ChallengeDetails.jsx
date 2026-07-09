@@ -47,7 +47,7 @@ import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../constants/languages";
 // Local Project Imports
 import SkeletonCard from "../components/SkeletonCard";
 import { api } from "../lib/api";
-import { argsToJsonStdin, wrapWithDriver } from "../lib/leetcodeDriver";
+import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
 import { MANUAL_TOPICS } from "../constants/manualContent";
 import FeedbackDialog from "../components/FeedbackDialog";
 
@@ -475,7 +475,8 @@ const ChallengeDetails = () => {
     const challenge = challengeQuery.data;
     const testCases = challenge?.testCases ?? [];
     const hasFunction = !!challenge?.functionName;
-    const isSupportedDriver = language === "python" || language === "javascript";
+    const isSupportedDriver = language === "python" || language === "javascript"
+      || isDrivableSignature(language, challenge?.params, challenge?.returnType);
 
     const runs =
       testCases.length > 0
@@ -489,7 +490,7 @@ const ChallengeDetails = () => {
     const langId = LANGUAGE_MAP[language]?.id ?? 63;
     const commentChar = language === "python" ? "#" : "//";
     const finalSourceCode = (hasFunction && isSupportedDriver)
-      ? wrapWithDriver(codeSnippet, language, challenge.functionName)
+      ? wrapWithDriver(codeSnippet, language, challenge.functionName, challenge.params, challenge.returnType)
       : codeSnippet;
 
     const freshSource = (idx) =>
@@ -1185,7 +1186,8 @@ const ChallengeDetails = () => {
                               onClick={() => {
                                 setSelectedCaseIdx(i);
                                 const hasFunction = !!challenge?.functionName;
-                                const isSupportedDriver = language === "python" || language === "javascript";
+                                const isSupportedDriver = language === "python" || language === "javascript"
+                                  || isDrivableSignature(language, challenge?.params, challenge?.returnType);
                                 setStdin((hasFunction && isSupportedDriver) ? argsToJsonStdin(tc.args) : argsToStdin(tc.args));
                               }}
                               className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-colors ${
@@ -1204,7 +1206,8 @@ const ChallengeDetails = () => {
                           const tc = challenge.testCases[selectedCaseIdx];
                           if (!tc) return null;
                           const hasFunction = !!challenge?.functionName;
-                          const isSupportedDriver = language === "python" || language === "javascript";
+                          const isSupportedDriver = language === "python" || language === "javascript"
+                            || isDrivableSignature(language, challenge?.params, challenge?.returnType);
                           const inputStr = (hasFunction && isSupportedDriver) ? argsToJsonStdin(tc.args) : argsToStdin(tc.args);
                           return (
                             <div className="flex gap-2 shrink-0">
