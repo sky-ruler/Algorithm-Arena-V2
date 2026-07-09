@@ -583,7 +583,8 @@ const QuestionSetsTab = () => {
       {(view==='list'||view==='history')&&(
         <div className="flex flex-col gap-4">
           {setsQuery.data?.map((set,i)=>{
-            const isHistory=new Date(set.deadline)<new Date();
+            const deadlineEnd=new Date(set.deadline);deadlineEnd.setUTCHours(23,59,59,999);
+            const isHistory=deadlineEnd<new Date();
             if(view==='list'&&isHistory)return null;
             if(view==='history'&&!isHistory)return null;
             return(
