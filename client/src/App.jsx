@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+import { MotionConfig } from 'framer-motion';
 
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -49,55 +50,57 @@ function App() {
   };
 
   return (
-    <div className="app-container">
-      <div className="fixed bottom-20 sm:bottom-6 right-6 z-[60]">
-        <ThemeToggle />
+    <MotionConfig reducedMotion="user">
+      <div className="app-container">
+        <div className="fixed bottom-20 sm:bottom-6 right-6 z-[60]">
+          <ThemeToggle />
+        </div>
+        <NotificationListener />
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+            <Route path="/register" element={<Navigate to="/login" replace />} />
+
+            <Route
+              element={
+                <ProtectedRoute>
+                  <Layout onLogout={handleLogout} />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/claim-username" element={<ClaimUsername />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/clans" element={<Clans />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/badges" element={<Navigate to="/badges" replace />} />
+              <Route path="/profile/:username" element={<Profile />} />
+              <Route path="/challenge/:id" element={<ChallengeDetails />} />
+              <Route path="/submission/:id" element={<SubmissionDetails />} />
+              <Route path="/missions" element={<Missions />} />
+              <Route path="/pending-tasks" element={<PendingTasks />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/badges" element={<Badges />} />
+
+              <Route path="/chief-panel" element={<ClanChiefRoute><ClanChiefPanel /></ClanChiefRoute>} />
+
+              {/* New Features */}
+              <Route path="/resources" element={<Resources />} />
+              <Route path="/pending-assignment" element={<PendingAssignment />} />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+        <Analytics />
+        <SpeedInsights />
       </div>
-      <NotificationListener />
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="/register" element={<Navigate to="/login" replace />} />
-
-          <Route
-            element={
-              <ProtectedRoute>
-                <Layout onLogout={handleLogout} />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/claim-username" element={<ClaimUsername />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/clans" element={<Clans />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/badges" element={<Navigate to="/badges" replace />} />
-            <Route path="/profile/:username" element={<Profile />} />
-            <Route path="/challenge/:id" element={<ChallengeDetails />} />
-            <Route path="/submission/:id" element={<SubmissionDetails />} />
-            <Route path="/missions" element={<Missions />} />
-            <Route path="/pending-tasks" element={<PendingTasks />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/badges" element={<Badges />} />
-
-            <Route path="/chief-panel" element={<ClanChiefRoute><ClanChiefPanel /></ClanChiefRoute>} />
-            
-            {/* New Features */}
-            <Route path="/resources" element={<Resources />} />
-            <Route path="/pending-assignment" element={<PendingAssignment />} />
-          </Route>
-
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-      <Analytics />
-      <SpeedInsights />
-    </div>
+    </MotionConfig>
   );
 }
 

@@ -7,6 +7,7 @@ import Footer from "../components/Footer";
 import { useIdleTimeout } from "../hooks/useIdleTimeout";
 import { useAuth } from "../context/useAuth";
 import toast from "react-hot-toast";
+import { pageEnter } from "../lib/motion";
 
 const Layout = ({ onLogout }) => {
   const location = useLocation();
@@ -45,10 +46,7 @@ useIdleTimeout(() => {
         <AnimatePresence mode="wait" initial={false}>
           <MotionContainer
             key={location.pathname}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.28, ease: "easeOut" }}
+            {...pageEnter}
             className="w-full h-full flex flex-col"
           >
             <Outlet />
