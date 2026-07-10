@@ -31,6 +31,8 @@ const SignatureInfo = ({ functionName, params, returnType }) => {
   );
 };
 
+const DIFFICULTY_POINTS = { Easy: 100, Medium: 200, Hard: 350 };
+
 const initialQuestionState = {
   title:'',difficulty:'Easy',points:100,category:'',description:'',
   hints:[''],leetcodeSlug:'',tags:[],codeSnippets:[],solutions:[],functionName:'',params:[],returnType:'',testCases:[]
@@ -318,7 +320,7 @@ const QuestionSetsTab = () => {
     mutationFn:async({slug,index})=>{const r=await api.get(`/api/challenges/fetch-leetcode-details?slug=${slug}`);return{data:r.data.data,index}},
     onSuccess:({data,index})=>{
       toast.success('LeetCode problem fetched!');const nq=[...form.questions];
-      nq[index].title=data.title||'';nq[index].description=data.content||'';nq[index].difficulty=data.difficulty||'Easy';
+      nq[index].title=data.title||'';nq[index].description=data.content||'';nq[index].difficulty=data.difficulty||'Easy';nq[index].points=DIFFICULTY_POINTS[nq[index].difficulty]??100;
       const tags=(data.topicTags||[]).map(t=>t.name);nq[index].category=tags[0]||'General';nq[index].tags=tags;
       nq[index].codeSnippets=data.codeSnippets||[];nq[index].functionName=data.functionName||'';
       nq[index].params=data.params||[];nq[index].returnType=data.returnType||'';
@@ -361,7 +363,7 @@ const QuestionSetsTab = () => {
       const r=await api.get(`/api/challenges/fetch-leetcode-details?slug=${slug}`);
       const{title,content,difficulty,topicTags,codeSnippets,functionName,params,returnType,testCases}=r.data.data;
       const tags=(topicTags||[]).map(t=>t.name);
-      setCreateChallengeForm(p=>({...p,title,description:content,difficulty,category:tags[0]||p.category,
+      setCreateChallengeForm(p=>({...p,title,description:content,difficulty,points:DIFFICULTY_POINTS[difficulty]??100,category:tags[0]||p.category,
         link:`https://leetcode.com/problems/${slug}/`,tags,codeSnippets:codeSnippets||[],
         functionName:functionName||'',params:params||[],returnType:returnType||'',
         testCases:(testCases||[]).map(tc=>({...tc,args:JSON.stringify(tc.args),expected:cleanExpected(tc.expected)}))}));
@@ -373,7 +375,7 @@ const QuestionSetsTab = () => {
   const handleFileChange=(e)=>{const f=e.target.files?.[0];if(f)importMutation.mutate(f)};
   const handleAddQuestion=()=>{if(form.questions.length>=5)return toast.error('Max 5');setForm(p=>({...p,questions:[...p.questions,{...initialQuestionState}]}))};
   const handleRemoveQuestion=(i)=>{if(form.questions.length===1)return;setForm(p=>({...p,questions:p.questions.filter((_,j)=>j!==i)}))};
-  const updateQuestion=(i,f,v)=>{const nq=[...form.questions];nq[i][f]=v;setForm({...form,questions:nq})};
+  const updateQuestion=(i,f,v)=>{const nq=[...form.questions];nq[i][f]=v;if(f==='difficulty')nq[i].points=DIFFICULTY_POINTS[v]??nq[i].points;setForm({...form,questions:nq})};
   const updateHint=(qi,hi,v)=>{const nq=[...form.questions];nq[qi].hints[hi]=v;setForm({...form,questions:nq})};
   const handleStartCreate=()=>{setEditingSetId(null);setForm(blankForm());setView('create')};
   const handleEditSet=(set)=>{
@@ -578,7 +580,7 @@ const QuestionSetsTab = () => {
                         </div>
                         <div className="md:col-span-2"><label className="field-label text-[10px]">Title</label><input required className="field-input text-sm" value={q.title} onChange={e=>updateQuestion(i,'title',e.target.value)}/></div>
                         <div><label className="field-label text-[10px]">Difficulty</label><select className="field-select text-sm" value={q.difficulty} onChange={e=>updateQuestion(i,'difficulty',e.target.value)}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
-                        <div><label className="field-label text-[10px]">Points</label><input required type="number" className="field-input text-sm" value={q.points} onChange={e=>updateQuestion(i,'points',Number(e.target.value))}/></div>
+                        <div><label className="field-label text-[10px]">Points (auto)</label><input disabled type="number" className="field-input text-sm opacity-70 cursor-not-allowed" value={DIFFICULTY_POINTS[q.difficulty]??q.points}/></div>
                         <div><label className="field-label text-[10px]">Tags/Category</label><input className="field-input text-sm" placeholder="e.g. Arrays, Sorting" value={q.category} onChange={e=>updateQuestion(i,'category',e.target.value)}/></div>
                         <div className="md:col-span-3"><label className="field-label text-[10px]">Problem Description</label><textarea required rows="3" className="field-textarea text-sm" value={q.description} onChange={e=>updateQuestion(i,'description',e.target.value)}/></div>
                         <div className="md:col-span-3"><label className="field-label text-[10px]">Hints (optional)</label>{q.hints.map((hint,hi)=>(<input key={hi} className="field-input text-sm mb-2" placeholder="Hint..." value={hint} onChange={e=>updateHint(i,hi,e.target.value)}/>))}</div>
@@ -668,8 +670,8 @@ const QuestionSetsTab = () => {
             <div><label className="field-label">Description (HTML supported)</label><textarea className="field-textarea" required rows={8} value={createChallengeForm.description} onChange={e=>setCreateChallengeForm(p=>({...p,description:e.target.value}))}/></div>
             <div><label className="field-label">Original Question Link</label><input className="field-input" type="url" placeholder="https://leetcode.com/problems/..." value={createChallengeForm.link} onChange={e=>setCreateChallengeForm(p=>({...p,link:e.target.value}))}/></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div><label className="field-label">Difficulty</label><select className="field-select" value={createChallengeForm.difficulty} onChange={e=>setCreateChallengeForm(p=>({...p,difficulty:e.target.value}))}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
-              <div><label className="field-label">Points</label><input className="field-input" type="number" required value={createChallengeForm.points} onChange={e=>setCreateChallengeForm(p=>({...p,points:Number(e.target.value)}))}/></div>
+              <div><label className="field-label">Difficulty</label><select className="field-select" value={createChallengeForm.difficulty} onChange={e=>setCreateChallengeForm(p=>({...p,difficulty:e.target.value,points:DIFFICULTY_POINTS[e.target.value]??p.points}))}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
+              <div><label className="field-label">Points (auto)</label><input disabled className="field-input opacity-70 cursor-not-allowed" type="number" value={DIFFICULTY_POINTS[createChallengeForm.difficulty]??createChallengeForm.points}/></div>
               <div><label className="field-label">Category</label><input className="field-input" required value={createChallengeForm.category} onChange={e=>setCreateChallengeForm(p=>({...p,category:e.target.value}))}/></div>
             </div>
             {createChallengeForm.tags.length>0&&(<div><label className="field-label">Topic Tags</label><div className="flex flex-wrap gap-2">{createChallengeForm.tags.map(tag=>(<span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20">{tag}<button type="button" className="ml-0.5 hover:text-red-400 transition-colors" onClick={()=>setCreateChallengeForm(p=>({...p,tags:p.tags.filter(t=>t!==tag)}))}><FiX size={12}/></button></span>))}</div></div>)}
@@ -692,8 +694,8 @@ const QuestionSetsTab = () => {
               <div><label className="field-label text-xs">Description</label><textarea className="field-textarea text-sm" required rows="4" value={editingChallenge.description} onChange={e=>setEditingChallenge(p=>({...p,description:e.target.value}))}/></div>
               <div><label className="field-label text-xs">Original Question Link</label><input className="field-input text-sm" type="url" value={editingChallenge.link||''} onChange={e=>setEditingChallenge(p=>({...p,link:e.target.value}))}/></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div><label className="field-label text-xs">Difficulty</label><select className="field-select text-sm" value={editingChallenge.difficulty} onChange={e=>setEditingChallenge(p=>({...p,difficulty:e.target.value}))}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
-                <div><label className="field-label text-xs">Points</label><input className="field-input text-sm" type="number" required value={editingChallenge.points} onChange={e=>setEditingChallenge(p=>({...p,points:Number(e.target.value)}))}/></div>
+                <div><label className="field-label text-xs">Difficulty</label><select className="field-select text-sm" value={editingChallenge.difficulty} onChange={e=>setEditingChallenge(p=>({...p,difficulty:e.target.value,points:DIFFICULTY_POINTS[e.target.value]??p.points}))}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
+                <div><label className="field-label text-xs">Points (auto)</label><input disabled className="field-input text-sm opacity-70 cursor-not-allowed" type="number" value={DIFFICULTY_POINTS[editingChallenge.difficulty]??editingChallenge.points}/></div>
                 <div><label className="field-label text-xs">Category</label><input className="field-input text-sm" required value={editingChallenge.category} onChange={e=>setEditingChallenge(p=>({...p,category:e.target.value}))}/></div>
               </div>
               {renderSolutionEditor({ editorKey: "edit-challenge", solutions: editingChallenge.solutions||[], onChange: v=>setEditingChallenge(p=>({...p,solutions:v})) })}

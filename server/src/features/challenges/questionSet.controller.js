@@ -5,6 +5,7 @@ const { sendSuccess } = require('../../../utils/response');
 const { logAudit } = require('../../../utils/audit');
 const { sendEmail } = require('../../../utils/emailService');
 const { cleanupSubmissionsAndUserStats } = require('./challenge.service');
+const { getPointsForDifficulty } = require('../../../utils/xp');
 
 const getQuestionSets = async (req, res, next) => {
   try {
@@ -44,12 +45,13 @@ const createQuestionSet = async (req, res, next) => {
       req.body.title = capitalizeTitle(req.body.title);
     }
 
-    // Capitalize each individual question title
+    // Capitalize each individual question title and enforce difficulty-based XP
     if (req.body.questions && req.body.questions.length > 0) {
       req.body.questions = req.body.questions.map(q => {
         if (q.title) {
           q.title = capitalizeTitle(q.title);
         }
+        q.points = getPointsForDifficulty(q.difficulty || 'Easy');
         return q;
       });
     }
@@ -70,7 +72,7 @@ const createQuestionSet = async (req, res, next) => {
         title: q.title,
         description: q.description,
         difficulty: q.difficulty || 'Easy',
-        points: q.points || 100,
+        points: getPointsForDifficulty(q.difficulty || 'Easy'),
         category: q.category || 'Logic',
         tags: q.tags || [],
         codeSnippets: q.codeSnippets || [],
@@ -112,7 +114,7 @@ const buildChallengePayload = (q, setId) => ({
   title: q.title,
   description: q.description || q.title || 'No description provided',
   difficulty: q.difficulty || 'Easy',
-  points: q.points || 100,
+  points: getPointsForDifficulty(q.difficulty || 'Easy'),
   category: q.category || 'Logic',
   tags: q.tags || [],
   codeSnippets: q.codeSnippets || [],
@@ -136,9 +138,11 @@ const updateQuestionSet = async (req, res, next) => {
       req.body.title = capitalizeTitle(req.body.title);
     }
     if (Array.isArray(req.body.questions)) {
-      req.body.questions = req.body.questions.map((q) =>
-        q.title ? { ...q, title: capitalizeTitle(q.title) } : q
-      );
+      req.body.questions = req.body.questions.map((q) => ({
+        ...q,
+        ...(q.title ? { title: capitalizeTitle(q.title) } : {}),
+        points: getPointsForDifficulty(q.difficulty || 'Easy'),
+      }));
     }
 
     const fields = ['title', 'weekNumber', 'deadline', 'targetLevel', 'questions', 'status'];
