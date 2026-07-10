@@ -95,6 +95,59 @@ const displayExpected = (val) => {
   return decoded;
 };
 
+/** Parse a value into JSON after the same literal normalization as normalizeOutput. */
+const tryParseJson = (s) => {
+  try {
+    const decoded = decodeHtmlEntities(s ?? "").trim();
+    const jsonish = decoded
+      .replace(/'/g, '"')
+      .replace(/\b(True|False|None)\b/g, (m) => LANG_LITERALS[m]);
+    return JSON.parse(jsonish);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Recursively sort arrays (and object keys) so structurally-equal values compare equal regardless of order. */
+const canonicalize = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map(canonicalize)
+      .sort((a, b) => {
+        const as = JSON.stringify(a);
+        const bs = JSON.stringify(b);
+        return as < bs ? -1 : as > bs ? 1 : 0;
+      });
+  }
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => {
+        acc[k] = canonicalize(value[k]);
+        return acc;
+      }, {});
+  }
+  return value;
+};
+
+/**
+ * Compare actual vs expected output. When `orderIndependent` is set on the
+ * challenge (e.g. Group Anagrams), parse both as JSON and compare them with
+ * array order ignored at every nesting level; otherwise fall back to the
+ * normalized string comparison used for every other problem.
+ */
+const outputsMatch = (stdout, expected, orderIndependent) => {
+  if (expected == null) return false;
+  if (orderIndependent) {
+    const a = tryParseJson(stdout);
+    const b = tryParseJson(expected);
+    if (a !== undefined && b !== undefined) {
+      return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+    }
+  }
+  return normalizeOutput(stdout) === normalizeOutput(expected);
+};
+
 /**
  * Converts a single test-case arg value to its stdin representation.
  * Arrays → length on first line, then space-separated elements.
@@ -648,11 +701,11 @@ const ChallengeDetails = () => {
     try {
       const results = await runTestCases();
       const hasError = results.some((c) => c.compile_output || c.stderr);
+      const orderIndependent = challengeQuery.data?.orderIndependent;
       const allPassed =
         !hasError &&
         results.every(
-          (c) =>
-            c.expected != null && normalizeOutput(c.stdout) === normalizeOutput(c.expected),
+          (c) => c.expected != null && outputsMatch(c.stdout, c.expected, orderIndependent),
         );
 
       if (allPassed) {
@@ -1292,14 +1345,12 @@ const ChallengeDetails = () => {
                       <div className="space-y-3">
                         {runOutput.cases.map((c, i) => {
                           const hasError = c.compile_output || c.stderr;
-                          const passed =
-                            !hasError &&
+                          const matches =
                             c.expected != null &&
-                            normalizeOutput(c.stdout) === normalizeOutput(c.expected);
+                            outputsMatch(c.stdout, c.expected, challenge?.orderIndependent);
+                          const passed = !hasError && matches;
                           const failed =
-                            !hasError &&
-                            c.expected != null &&
-                            normalizeOutput(c.stdout) !== normalizeOutput(c.expected);
+                            !hasError && c.expected != null && !matches;
                           return (
                             <div
                               key={i}

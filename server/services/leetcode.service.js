@@ -37,13 +37,16 @@ const cleanExpectedOutput = (val) => {
 
 /**
  * Extract expected output strings from LeetCode's HTML description.
- */ 
+ */
 const extractExpectedOutputs = (html) => {
   const results = [];
-  const rx = /<strong[^>]*>Output:<\/strong>:?\s*([^\n<]+)/gi;
+  // The value after "Output:</strong>" often wraps its content in extra inline
+  // tags (e.g. <code>true</code>), so capture the whole rest of the line and
+  // strip any tags from it afterwards rather than stopping at the first "<".
+  const rx = /<strong[^>]*>Output:<\/strong>:?\s*([^\n]*)/gi;
   let m;
   while ((m = rx.exec(html)) !== null) {
-    const val = m[1].trim();
+    const val = m[1].replace(/<\/?[^>]+>/g, '').trim();
     if (val) results.push(cleanExpectedOutput(val));
   }
   return results;
