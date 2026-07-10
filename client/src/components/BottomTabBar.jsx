@@ -14,6 +14,14 @@ const TABS = [
 // Navbar hamburger drawer.
 const BottomTabBar = () => {
   const location = useLocation();
+  // The challenge/submission workspaces render their own mobile action bar,
+  // so the primary tab bar is hidden there to avoid a double bottom bar.
+  if (
+    location.pathname.startsWith("/challenge/") ||
+    location.pathname.startsWith("/submission/")
+  ) {
+    return null;
+  }
   return (
     <nav
       aria-label="Primary"
