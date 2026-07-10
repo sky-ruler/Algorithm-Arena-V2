@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiAward,
@@ -102,7 +102,7 @@ const Podium = ({ items, leaderType, loading }) => {
             <div className="mb-6 text-center">
               <div
                 className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 bg-glass-surface shadow-2xl md:h-20 md:w-20 ${
-                  isFirst ? "border-yellow-400/50 podium-gold-glow" : "border-white/10"
+                  isFirst ? "border-yellow-400/50 podium-gold-static" : "border-white/10"
                 }`}
               >
                 {item.profilePicture ? (
@@ -151,7 +151,7 @@ const Podium = ({ items, leaderType, loading }) => {
               <FiAward
                 size={40}
                 className={`absolute -top-6 ${
-                  isFirst ? "text-yellow-400 podium-trophy-gold" : index === 0 ? "text-slate-300" : "text-orange-500"
+                  isFirst ? "text-yellow-400 podium-trophy-static" : index === 0 ? "text-slate-300" : "text-orange-500"
                 }`}
               />
             </div>
@@ -200,6 +200,8 @@ const Leaderboard = () => {
   const leaderboardQuery = useQuery({
     queryKey: ["leaderboard", filters],
     enabled: leaderType === "individual",
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const params = new URLSearchParams({
         window: filters.window,
@@ -219,6 +221,8 @@ const Leaderboard = () => {
   const clanLeaderboardQuery = useQuery({
     queryKey: ["clan-leaderboard", filters.window],
     enabled: leaderType === "clans",
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const res = await api.get(
         `/api/clans/leaderboard?window=${filters.window}`,
@@ -497,7 +501,7 @@ const Leaderboard = () => {
           >
             <div className="hidden overflow-auto md:block">
               <table className="responsive-table text-left">
-                <thead>
+                <thead className="sticky top-0 z-10 surface-overlay">
                   <tr
                     className="text-xs font-bold uppercase tracking-widest text-secondary"
                     style={{
@@ -536,7 +540,7 @@ const Leaderboard = () => {
                         <MotionRow
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.03 }}
+                          transition={{ duration: 0.15 }}
                           className={`border-b transition-colors hover:bg-white/[0.02] ${rankStyles}`}
                           style={{
                             borderBottomColor: rank <= 3

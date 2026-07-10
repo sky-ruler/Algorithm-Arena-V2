@@ -689,36 +689,14 @@ samp,
     border: 1px solid rgba(var(--accent-rgb), 0.2);
 }
 
-/* First-Place Podium Golden Glow Animations */
-@keyframes golden-glow {
-    0%, 100% {
-        box-shadow: 0 0 12px rgba(250, 204, 21, 0.4), inset 0 0 8px rgba(250, 204, 21, 0.2);
-        border-color: rgba(250, 204, 21, 0.6) !important;
-    }
-    50% {
-        box-shadow: 0 0 28px rgba(250, 204, 21, 0.85), inset 0 0 12px rgba(250, 204, 21, 0.45);
-        border-color: rgba(250, 204, 21, 0.95) !important;
-    }
+/* First-Place Podium — static gold treatment (no infinite animations) */
+.podium-gold-static {
+    box-shadow: 0 0 16px rgba(250, 204, 21, 0.45), inset 0 0 6px rgba(250, 204, 21, 0.15);
+    border-color: rgba(250, 204, 21, 0.6);
 }
 
-.podium-gold-glow {
-    animation: golden-glow 2.5s infinite ease-in-out;
-}
-
-@keyframes trophy-gold-glow {
-    0%, 100% {
-        filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.5));
-        transform: scale(1) translateY(0);
-    }
-    50% {
-        filter: drop-shadow(0 0 16px rgba(250, 204, 21, 0.95));
-        transform: scale(1.1) translateY(-2px);
-    }
-}
-
-.podium-trophy-gold {
-    animation: trophy-gold-glow 2.5s infinite ease-in-out;
-    transform-origin: center bottom;
+.podium-trophy-static {
+    filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.6));
 }
 
 /* Panel slide-in animations (lg screens only) */

@@ -250,6 +250,7 @@ const Missions = () => {
   const challengesQuery = useQuery({
     queryKey,
     placeholderData: keepPreviousData,
+    staleTime: 60_000,
     queryFn: async () => {
       try {
         const effectiveFilters = filters.grouping !== 'none'

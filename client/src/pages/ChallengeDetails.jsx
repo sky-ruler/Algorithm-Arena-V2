@@ -233,6 +233,7 @@ const ChallengeDetails = () => {
 
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
+    staleTime: 60_000,
     queryFn: async () => {
       try {
         const res = await api.get(`/api/challenges/${id}`);
