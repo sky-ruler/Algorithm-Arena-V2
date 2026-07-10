@@ -46,6 +46,8 @@ const questionSetSchema = new mongoose.Schema({
     functionName: { type: String, default: '' },
     params: [paramSchema],
     returnType: { type: String, default: '' },
+    // When true, test-case comparison ignores array/element order (e.g. Group Anagrams).
+    orderIndependent: { type: Boolean, default: false },
     testCases: [{
       label: { type: String },
       args: { type: mongoose.Schema.Types.Mixed },

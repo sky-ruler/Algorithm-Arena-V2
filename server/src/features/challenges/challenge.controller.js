@@ -158,6 +158,7 @@ const getChallenges = async (req, res, next) => {
           functionName: q.functionName || '',
           params: q.params || [],
           returnType: q.returnType || '',
+          orderIndependent: !!q.orderIndependent,
           testCases: q.testCases || [],
           questionSetId: questionSet._id,
         }));

@@ -34,11 +34,11 @@ const SignatureInfo = ({ functionName, params, returnType }) => {
 const DIFFICULTY_POINTS = { Easy: 100, Medium: 200, Hard: 350 };
 
 const initialQuestionState = {
-  title:'',difficulty:'Easy',points:100,category:'',description:'',
+  title:'',difficulty:'Easy',points:100,category:'',description:'',orderIndependent:false,
   hints:[''],leetcodeSlug:'',tags:[],codeSnippets:[],solutions:[],functionName:'',params:[],returnType:'',testCases:[]
 };
 const defaultChallengeForm = {
-  title:'',description:'',link:'',difficulty:'Easy',points:100,
+  title:'',description:'',link:'',difficulty:'Easy',points:100,orderIndependent:false,
   category:'Logic',tags:[],codeSnippets:[],solutions:[],functionName:'',params:[],returnType:'',testCases:[]
 };
 const prepareTestCases = (raw) => raw.filter(tc=>tc.label.trim()).map(tc=>{
@@ -582,6 +582,7 @@ const QuestionSetsTab = () => {
                         <div><label className="field-label text-[10px]">Difficulty</label><select className="field-select text-sm" value={q.difficulty} onChange={e=>updateQuestion(i,'difficulty',e.target.value)}><option>Easy</option><option>Medium</option><option>Hard</option></select></div>
                         <div><label className="field-label text-[10px]">Points (auto)</label><input disabled type="number" className="field-input text-sm opacity-70 cursor-not-allowed" value={DIFFICULTY_POINTS[q.difficulty]??q.points}/></div>
                         <div><label className="field-label text-[10px]">Tags/Category</label><input className="field-input text-sm" placeholder="e.g. Arrays, Sorting" value={q.category} onChange={e=>updateQuestion(i,'category',e.target.value)}/></div>
+                        <div className="md:col-span-3 flex items-center gap-2"><input type="checkbox" id={`order-independent-${i}`} checked={!!q.orderIndependent} onChange={e=>updateQuestion(i,'orderIndependent',e.target.checked)}/><label htmlFor={`order-independent-${i}`} className="text-xs text-secondary cursor-pointer">Order doesn't matter (e.g. Group Anagrams) — ignore array/element order when checking output</label></div>
                         <div className="md:col-span-3"><label className="field-label text-[10px]">Problem Description</label><textarea required rows="3" className="field-textarea text-sm" value={q.description} onChange={e=>updateQuestion(i,'description',e.target.value)}/></div>
                         <div className="md:col-span-3"><label className="field-label text-[10px]">Hints (optional)</label>{q.hints.map((hint,hi)=>(<input key={hi} className="field-input text-sm mb-2" placeholder="Hint..." value={hint} onChange={e=>updateHint(i,hi,e.target.value)}/>))}</div>
                         {renderSolutionEditor({ editorKey: `set-question-${i}`, solutions: q.solutions||[], onChange: v=>updateQuestion(i,'solutions',v) })}
@@ -674,6 +675,7 @@ const QuestionSetsTab = () => {
               <div><label className="field-label">Points (auto)</label><input disabled className="field-input opacity-70 cursor-not-allowed" type="number" value={DIFFICULTY_POINTS[createChallengeForm.difficulty]??createChallengeForm.points}/></div>
               <div><label className="field-label">Category</label><input className="field-input" required value={createChallengeForm.category} onChange={e=>setCreateChallengeForm(p=>({...p,category:e.target.value}))}/></div>
             </div>
+            <div className="flex items-center gap-2"><input type="checkbox" id="create-order-independent" checked={!!createChallengeForm.orderIndependent} onChange={e=>setCreateChallengeForm(p=>({...p,orderIndependent:e.target.checked}))}/><label htmlFor="create-order-independent" className="text-xs text-secondary cursor-pointer">Order doesn't matter (e.g. Group Anagrams) — ignore array/element order when checking output</label></div>
             {createChallengeForm.tags.length>0&&(<div><label className="field-label">Topic Tags</label><div className="flex flex-wrap gap-2">{createChallengeForm.tags.map(tag=>(<span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20">{tag}<button type="button" className="ml-0.5 hover:text-red-400 transition-colors" onClick={()=>setCreateChallengeForm(p=>({...p,tags:p.tags.filter(t=>t!==tag)}))}><FiX size={12}/></button></span>))}</div></div>)}
             {createChallengeForm.codeSnippets.length>0&&(<div><label className="field-label">Starter Code ({createChallengeForm.codeSnippets.length} languages)</label><div className="flex gap-2 mb-2 flex-wrap">{createChallengeForm.codeSnippets.map(s=>(<button key={s.langSlug} type="button" className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${snippetLang===s.langSlug?'bg-accent text-white':'bg-white/5 text-secondary hover:text-primary'}`} onClick={()=>setSnippetLang(s.langSlug)}>{s.lang}</button>))}</div><pre className="bg-white/5 border border-white/10 rounded-xl p-4 text-xs overflow-x-auto max-h-48 overflow-y-auto font-mono"><code>{createChallengeForm.codeSnippets.find(s=>s.langSlug===snippetLang)?.code||'Select a language above'}</code></pre></div>)}
             {renderSolutionEditor({ editorKey: "create-challenge", solutions: createChallengeForm.solutions||[], onChange: v=>setCreateChallengeForm(p=>({...p,solutions:v})) })}
@@ -698,6 +700,7 @@ const QuestionSetsTab = () => {
                 <div><label className="field-label text-xs">Points (auto)</label><input disabled className="field-input text-sm opacity-70 cursor-not-allowed" type="number" value={DIFFICULTY_POINTS[editingChallenge.difficulty]??editingChallenge.points}/></div>
                 <div><label className="field-label text-xs">Category</label><input className="field-input text-sm" required value={editingChallenge.category} onChange={e=>setEditingChallenge(p=>({...p,category:e.target.value}))}/></div>
               </div>
+              <div className="flex items-center gap-2"><input type="checkbox" id="edit-order-independent" checked={!!editingChallenge.orderIndependent} onChange={e=>setEditingChallenge(p=>({...p,orderIndependent:e.target.checked}))}/><label htmlFor="edit-order-independent" className="text-xs text-secondary cursor-pointer">Order doesn't matter (e.g. Group Anagrams) — ignore array/element order when checking output</label></div>
               {renderSolutionEditor({ editorKey: "edit-challenge", solutions: editingChallenge.solutions||[], onChange: v=>setEditingChallenge(p=>({...p,solutions:v})) })}
               <div><label className="field-label text-xs">Solution Function Name</label><input className="field-input text-sm font-mono" placeholder="e.g. twoSum" value={editingChallenge.functionName||''} onChange={e=>setEditingChallenge(p=>({...p,functionName:e.target.value.trim()}))}/><SignatureInfo functionName={editingChallenge.functionName} params={editingChallenge.params} returnType={editingChallenge.returnType}/></div>
               <TestCaseEditor cases={editingChallenge.testCases||[]} onChange={v=>setEditingChallenge(p=>({...p,testCases:v}))}/>
