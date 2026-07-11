@@ -28,86 +28,16 @@ import { api } from "../lib/api";
 import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
 import { useAuth } from "../context/useAuth";
 
-const decodeHtmlEntities = (str) => {
-  if (!str) return "";
-  return str
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-};
+import {
+  normalizeOutput,
+  displayExpected,
+  argsToStdin,
+  b64Encode,
+  b64Decode,
+  defaultStarterByLanguage,
+  outputsMatch,
+} from "../lib/challengeOutput";
 
-const LANG_LITERALS = { True: "true", False: "false", None: "null" };
-const normalizeOutput = (s) => {
-  let decoded = decodeHtmlEntities(s ?? "");
-  let trimmed = decoded.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
-    trimmed = trimmed.slice(1, -1);
-  }
-  return trimmed
-    .replace(/\s+/g, "")
-    .replace(/'/g, '"')
-    .replace(/\b(True|False|None)\b/g, (m) => LANG_LITERALS[m]);
-};
-
-const displayExpected = (val) => {
-  if (!val) return val;
-  let decoded = decodeHtmlEntities(val).trim();
-  if (decoded.startsWith('"') && decoded.endsWith('"') && decoded.length >= 2) {
-    decoded = decoded.slice(1, -1);
-  }
-  return decoded;
-};
-
-const formatArgForStdin = (a) => {
-  if (a == null) return "";
-  if (typeof a === "string") return a;
-  if (typeof a === "number" || typeof a === "boolean") return String(a);
-  if (Array.isArray(a)) {
-    if (a.length > 0 && Array.isArray(a[0])) {
-      return a.map((inner) => (Array.isArray(inner) ? inner.join(" ") : String(inner))).join("\n");
-    }
-    return a.join(" ");
-  }
-  return JSON.stringify(a);
-};
-
-const argsToStdin = (args) => {
-  if (args == null) return "";
-  const list = Array.isArray(args) ? args : [args];
-  return list.map(formatArgForStdin).join("\n");
-};
-
-const b64Encode = (str) =>
-  btoa(
-    encodeURIComponent(str).replace(/%([0-9A-F]{2})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16)),
-    ),
-  );
-
-const b64Decode = (str) => {
-  if (!str) return "";
-  try {
-    return decodeURIComponent(
-      atob(str)
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join(""),
-    );
-  } catch {
-    return str;
-  }
-};
-
-const defaultStarterByLanguage = {
-  javascript: `function solution() {\n    // read input, compute, print output\n}\n\nsolution();\n`,
-  python: `import sys\ninput = sys.stdin.readline\n\ndef solution():\n    pass\n\nsolution()\n`,
-  java: `import java.util.*;\nimport java.util.stream.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        \n    }\n}\n`,
-  cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    \n    return 0;\n}\n`,
-  c: `#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    \n    return 0;\n}\n`,
-};
 
 const ChallengeDetails = () => {
   const { id } = useParams();
@@ -117,7 +47,7 @@ const ChallengeDetails = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const isReviewer = ["admin", "super-admin", "clan-chief"].includes(user?.role);
+  const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(user?.role);
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
 
   const [codeByLang, setCodeByLang] = useState({});
@@ -867,14 +797,12 @@ const ChallengeDetails = () => {
                       <div className="space-y-3">
                         {runOutput.cases.map((c, i) => {
                           const hasError = c.compile_output || c.stderr;
-                          const passed =
+                          const matchResult =
                             !hasError &&
                             c.expected != null &&
-                            normalizeOutput(c.stdout) === normalizeOutput(c.expected);
-                          const failed =
-                            !hasError &&
-                            c.expected != null &&
-                            normalizeOutput(c.stdout) !== normalizeOutput(c.expected);
+                            outputsMatch(c.stdout, c.expected, challenge?.orderIndependent);
+                          const passed = matchResult === true;
+                          const failed = !hasError && c.expected != null && !matchResult;
                           return (
                             <div
                               key={i}

@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FiGrid, FiList, FiX, FiTarget, FiClock } from 'react-icons/fi';
 import { api } from '../lib/api';
 import ChallengeCard from '../components/Card';
+import ChallengeRow from '../components/challenge/ChallengeRow';
 import SkeletonCard from '../components/SkeletonCard';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/useAuth';
+import { getDifficultyRGB, DIFFICULTY_ORDER } from '../constants/difficulty';
 import {
   Select,
   SelectContent,
@@ -46,9 +47,6 @@ const difficultyChips = [
 ];
 const FALLBACK_CREATED_AT = '2026-01-01T00:00:00.000Z';
 
-const getRGB = (d) =>
-  d === "Easy" ? "34,197,94" : d === "Medium" ? "234,179,8" : d === "Hard" ? "239,68,68" : "99,102,241";
-
 const getLocalDrafts = () => {
   const drafts = [];
   try {
@@ -82,7 +80,25 @@ const getLocalDrafts = () => {
   return drafts;
 };
 
-const DIFF_ORDER = { Easy: 1, Medium: 2, Hard: 3 };
+const getDefaultFilters = (setId = '') => ({
+  page: 1,
+  limit: 6,
+  search: "",
+  difficulty: "",
+  category: "",
+  status: "All", // 'All', 'Accepted', 'Pending'
+  setId,
+  sortBy: "deadline",
+  sortDir: "asc",
+  grouping: "none", // 'none', 'weekly', 'monthly'
+});
+
+const STATUS_LABEL_TO_KEY = {
+  Solved: 'solved',
+  Attempted: 'attempted',
+  Rejected: 'rejected',
+  'Pending Review': 'pending',
+};
 
 // QuestionSet.deadline is stored as UTC midnight of the due date (admin picks
 // a bare date, no time), so treat it as valid through the end of that day.
@@ -183,30 +199,58 @@ const Missions = () => {
     }
     return null;
   };
-  const [filters, setFilters] = useState({
-    page: 1,
-    limit: 6,
-    search: "",
-    difficulty: "",
-    category: "",
-    status: "All", // 'All', 'Accepted', 'Pending'
-    setId: initialSetId,
-    sortBy: "deadline",
-    sortDir: "asc",
-    grouping: "none", // 'none', 'weekly', 'monthly'
-  });
+
+  // Same derivation as getBadge, mapped to the status keys ChallengeRow expects.
+  const getRowStatus = (chId) => {
+    const badge = getBadge(chId);
+    return badge ? STATUS_LABEL_TO_KEY[badge.label] || null : null;
+  };
+
+  const [filters, setFilters] = useState(() => getDefaultFilters(initialSetId));
+  const resetFilters = () => setFilters((prev) => getDefaultFilters(prev.setId));
+
   const [viewMode, setViewMode] = useState(
-    () => localStorage.getItem("missions:view") || "grid",
+    () => localStorage.getItem("missions:view") || "list",
   );
 
   useEffect(() => {
     localStorage.setItem("missions:view", viewMode);
   }, [viewMode]);
 
+  // Debounce the free-text search input so we don't refetch on every keystroke.
+  const [searchInput, setSearchInput] = useState(filters.search);
+  // Keep the local input in sync when filters.search changes from elsewhere
+  // (e.g. Clear filters). Adjusting state during render, per React docs,
+  // avoids the extra render a useEffect-based sync would cause.
+  const [prevFilterSearch, setPrevFilterSearch] = useState(filters.search);
+  if (filters.search !== prevFilterSearch) {
+    setPrevFilterSearch(filters.search);
+    setSearchInput(filters.search);
+  }
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) =>
+        prev.search === searchInput ? prev : { ...prev, search: searchInput, page: 1 },
+      );
+    }, 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const queryClient = useQueryClient();
+  const prefetchChallenge = (id) => {
+    queryClient.prefetchQuery({
+      queryKey: ["challenge", id],
+      queryFn: () => api.get(`/api/challenges/${id}`).then((r) => r.data.data),
+      staleTime: 60 * 1000,
+    });
+  };
+
   const queryKey = useMemo(() => ["challenges", filters], [filters]);
 
   const challengesQuery = useQuery({
     queryKey,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
     queryFn: async () => {
       try {
         const effectiveFilters = filters.grouping !== 'none'
@@ -360,8 +404,8 @@ const Missions = () => {
         if (isPastA !== isPastB) return isPastA ? 1 : -1; // Upcoming before past
         if (dlA !== dlB) return dlA - dlB; // Ascending order
       } else if (filters.sortBy === 'difficulty') {
-        const dA = DIFF_ORDER[a.difficulty] || 4;
-        const dB = DIFF_ORDER[b.difficulty] || 4;
+        const dA = DIFFICULTY_ORDER[a.difficulty] || 4;
+        const dB = DIFFICULTY_ORDER[b.difficulty] || 4;
         if (dA !== dB) return dA - dB;
       } else if (filters.sortBy === 'points') {
         if ((a.points || 0) !== (b.points || 0)) return (b.points || 0) - (a.points || 0);
@@ -406,7 +450,15 @@ const Missions = () => {
     }, {});
   }, [sortedChallenges, filters.grouping]);
 
-  const MotionBlock = motion.div;
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.search) count += 1;
+    if (filters.difficulty) count += 1;
+    if (filters.category) count += 1;
+    if (filters.status !== 'All') count += 1;
+    if (filters.grouping !== 'none') count += 1;
+    return count;
+  }, [filters.search, filters.difficulty, filters.category, filters.status, filters.grouping]);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
@@ -444,25 +496,22 @@ const Missions = () => {
         )}
       />
 
-      {/* Question Set Filter Banner */}
-
-
-      {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
+      {/* Sticky Filter Bar */}
+      <div className="sticky top-16 z-30 surface-overlay rounded-lg px-3 py-2 -mx-1 flex flex-wrap items-center gap-2">
         <input
-          className="field-input w-full sm:w-64 h-11 py-0"
+          className="field-input min-w-0 flex-1 sm:flex-none sm:w-64 h-11 py-0"
           placeholder="Search title or description"
-          value={filters.search}
-          onChange={(e) => handleFilterChange("search", e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
         <input
-          className="field-input w-full sm:w-48 h-11 py-0"
+          className="field-input min-w-0 flex-1 sm:flex-none sm:w-48 h-11 py-0"
           placeholder="Category or Tag"
           value={filters.category}
           onChange={(e) => handleFilterChange("category", e.target.value)}
         />
 
-        <div className="w-full sm:w-auto h-11">
+        <div className="min-w-0 flex-1 sm:flex-none h-11">
           <Select
             value={String(filters.limit)}
             onValueChange={(val) => handleFilterChange("limit", Number(val))}
@@ -478,7 +527,7 @@ const Missions = () => {
           </Select>
         </div>
 
-        <div className="w-full sm:w-auto h-11">
+        <div className="min-w-0 flex-1 sm:flex-none h-11">
           <Select
             value={filters.sortBy}
             onValueChange={(val) => handleFilterChange("sortBy", val)}
@@ -496,7 +545,7 @@ const Missions = () => {
           </Select>
         </div>
 
-        <div className="w-full sm:w-auto h-11">
+        <div className="min-w-0 flex-1 sm:flex-none h-11">
           <Select
             value={filters.grouping}
             onValueChange={(val) => handleFilterChange("grouping", val)}
@@ -521,44 +570,52 @@ const Missions = () => {
             Show All Missions
           </button>
         )}
-      </div>
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full">
-        <div className="flex flex-col sm:flex-row gap-4">
-          {/* Left Side: Difficulty Chips */}
-          <div className="chip-group flex flex-wrap gap-2">
-            {visibleDifficultyChips.map((chip) => (
-              <button
-                key={chip.label}
-                className={`chip-btn ${filters.difficulty === chip.value ? "active" : ""}`}
-                onClick={() => handleFilterChange("difficulty", chip.value)}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
 
-          {/* Status Tabs */}
-          <div className="flex bg-glass-border/30 rounded-lg p-1 flex-wrap gap-1">
-            {['All', 'Accepted', 'Pending', 'Rejected'].map(st => {
-              const label =
-                st === 'Accepted' ? 'Solved' :
-                st === 'Pending' ? 'Pending Review' :
-                st === 'Rejected' ? 'Rejected' : 'Remaining';
-              return (
-                <button
-                  key={st}
-                  onClick={() => handleFilterChange("status", st)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${filters.status === st ? 'bg-accent/20 text-accent shadow-sm' : 'text-secondary hover:text-primary'}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+        {/* Difficulty Chips */}
+        <div className="chip-group flex flex-wrap gap-2">
+          {visibleDifficultyChips.map((chip) => (
+            <button
+              key={chip.label}
+              className={`chip-btn ${filters.difficulty === chip.value ? "active" : ""}`}
+              onClick={() => handleFilterChange("difficulty", chip.value)}
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
 
-        {/* Right Side: View Mode Toggle & Clan Stat */}
-        <div className="flex items-center gap-4">
+        {/* Status Tabs */}
+        <div className="flex bg-glass-border/30 rounded-lg p-1 flex-wrap gap-1">
+          {['All', 'Accepted', 'Pending', 'Rejected'].map(st => {
+            const label =
+              st === 'Accepted' ? 'Solved' :
+              st === 'Pending' ? 'Pending Review' :
+              st === 'Rejected' ? 'Rejected' : 'Remaining';
+            return (
+              <button
+                key={st}
+                onClick={() => handleFilterChange("status", st)}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${filters.status === st ? 'bg-accent/20 text-accent shadow-sm' : 'text-secondary hover:text-primary'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Side: filter count / clan stat / view toggle */}
+        <div className="flex items-center gap-3 ml-auto">
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+            >
+              {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''}
+              <FiX size={12} /> Clear
+            </button>
+          )}
+
           {user?.clan && (
             <div className="hidden xl:flex items-center gap-3 bg-white/[0.03] border border-white/5 px-4 py-2 rounded-xl">
               <span className="text-[10px] font-black uppercase tracking-widest text-secondary">Clan vs Global Solve Rate</span>
@@ -590,12 +647,20 @@ const Missions = () => {
 
       <div className="space-y-6">
         {challengesQuery.isLoading ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
+          viewMode === "list" ? (
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} variant="row" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          )
         ) : sortedChallenges.length === 0 ? (
           <EmptyState
             title={
@@ -611,17 +676,7 @@ const Missions = () => {
               "No missions found for the current filters. Great job pushing your limits!"
             }
             actionLabel="Reset Filters"
-            onAction={() =>
-              setFilters({
-                page: 1,
-                limit: 12,
-                search: "",
-                difficulty: "",
-                category: "",
-                sortBy: "deadline",
-                sortDir: "asc",
-              })
-            }
+            onAction={resetFilters}
           />
         ) : (
           <>
@@ -636,105 +691,58 @@ const Missions = () => {
 
                 {viewMode === "grid" ? (
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {groupItems.map((challenge, index) => (
-                      <MotionBlock
-                        key={challenge._id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.03 }}
-                      >
-                        <Link to={`/challenge/${challenge._id}`} className="group block h-full">
-                          <ChallengeCard
-                            className="h-full p-6 !rounded-2xl"
-                            innerClassName="flex flex-col gap-3 h-full justify-between w-full"
-                            difficultyColor={getRGB(challenge.difficulty)}
-                          >
-                            <div className="flex justify-between items-start mb-4">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
-                                challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
-                              }`}>
-                                {challenge.difficulty}
-                              </span>
+                    {groupItems.map((challenge) => (
+                      <Link key={challenge._id} to={`/challenge/${challenge._id}`} className="group block h-full">
+                        <ChallengeCard
+                          className="h-full p-6 !rounded-2xl"
+                          innerClassName="flex flex-col gap-3 h-full justify-between w-full"
+                          difficultyColor={getDifficultyRGB(challenge.difficulty)}
+                        >
+                          <div className="flex justify-between items-start mb-4">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                              challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
+                              challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
+                            }`}>
+                              {challenge.difficulty}
+                            </span>
 
-                              <div className="flex items-center gap-2">
-                                {(() => {
-                                  const badge = getBadge(challenge._id);
-                                  return badge && (
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
-                                  );
-                                })()}
-                                <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
-                              </div>
-                            </div>
-                            <div className="flex items-start justify-between gap-3 mt-2">
-                              <h2 className="text-xl font-bold group-hover:text-accent transition-colors line-clamp-2 flex-1 font-h2">{challenge.title}</h2>
-                              {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-1">New</span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-2 mt-auto pt-4">
-                              {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
-                                <span key={idx} className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
-                              ))}
-                              {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
-                                <span className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
-                              )}
-                            </div>
-                          </ChallengeCard>
-                        </Link>
-                      </MotionBlock>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {groupItems.map((challenge, index) => (
-                      <MotionBlock
-                        key={challenge._id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.03 }}
-                      >
-                        <Link to={`/challenge/${challenge._id}`} className="group block">
-                          <ChallengeCard
-                            className="p-4 sm:p-6 !rounded-2xl"
-                            innerClassName="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full h-full"
-                            difficultyColor={getRGB(challenge.difficulty)}
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-start gap-3">
-                                <h2 className="text-lg font-bold group-hover:text-accent transition-colors line-clamp-1 flex-1 font-h2">{challenge.title}</h2>
-                                {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-0.5">New</span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
-                                  <span key={idx} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
-                                ))}
-                                {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                            <div className="flex items-center gap-2">
                               {(() => {
                                 const badge = getBadge(challenge._id);
                                 return badge && (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls} hidden sm:block`}>{badge.label}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
                                 );
                               })()}
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                challenge.difficulty === "Easy" ? "bg-green-500/20 text-green-500" :
-                                challenge.difficulty === "Medium" ? "bg-yellow-500/20 text-yellow-500" : "bg-red-500/20 text-red-500"
-                              }`}>
-                                {challenge.difficulty}
-                              </span>
-                              <span className="text-secondary text-sm min-w-[60px] text-right font-bold">{challenge.points} XP</span>
+                              <span className="text-secondary text-sm font-bold">{challenge.points} XP</span>
                             </div>
-                          </ChallengeCard>
-                        </Link>
-                      </MotionBlock>
+                          </div>
+                          <div className="flex items-start justify-between gap-3 mt-2">
+                            <h2 className="text-xl font-bold group-hover:text-accent transition-colors line-clamp-2 flex-1 font-h2">{challenge.title}</h2>
+                            {new Date() - new Date(challenge.createdAt || Date.now()) < 7 * 24 * 60 * 60 * 1000 && (
+                              <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-blue-500/15 text-blue-400 border border-blue-500/25 shadow-[0_0_8px_rgba(59,130,246,0.35)] animate-pulse flex-shrink-0 mt-1">New</span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-auto pt-4">
+                            {challenge.tags && challenge.tags.slice(0, 3).map((tag, idx) => (
+                              <span key={idx} className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{tag}</span>
+                            ))}
+                            {(!challenge.tags || challenge.tags.length === 0) && challenge.category && (
+                              <span className="text-xs font-semibold px-2 py-1 rounded bg-white/5 text-secondary border border-white/5">{challenge.category}</span>
+                            )}
+                          </div>
+                        </ChallengeCard>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {groupItems.map((challenge) => (
+                      <ChallengeRow
+                        key={challenge._id}
+                        challenge={challenge}
+                        status={getRowStatus(challenge._id)}
+                        onHover={() => prefetchChallenge(challenge._id)}
+                      />
                     ))}
                   </div>
                 )}

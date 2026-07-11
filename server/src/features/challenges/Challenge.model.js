@@ -1,5 +1,6 @@
 // src/models/Challenge.js
 const mongoose = require('mongoose');
+const { getPointsForDifficulty } = require('../../../utils/xp');
 
 // A plain `{ name: String, type: String }` object literal is misread by Mongoose:
 // the `type` key is its own type-shorthand syntax, so the whole object collapses
@@ -14,7 +15,7 @@ const challengeSchema = new mongoose.Schema({
     enum: ['Easy', 'Medium', 'Hard'], 
     default: 'Easy' 
   },
-  points: { type: Number, default: 100 },
+  points: { type: Number, default: function () { return getPointsForDifficulty(this.difficulty); } },
   category: { type: String, default: 'Logic' },
   link: { type: String, default: '' }, 
   tags: [{ type: String }], 
@@ -33,6 +34,9 @@ const challengeSchema = new mongoose.Schema({
   functionName: { type: String, default: '' },
   params: [paramSchema],
   returnType: { type: String, default: '' },
+  // When true, test-case comparison ignores array/element order (e.g. Group Anagrams,
+  // where groups and their contents may be returned in any order).
+  orderIndependent: { type: Boolean, default: false },
   testCases: [{
     label: { type: String },
     args: { type: mongoose.Schema.Types.Mixed },

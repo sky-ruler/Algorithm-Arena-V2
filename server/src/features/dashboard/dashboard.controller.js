@@ -37,6 +37,24 @@ const getCachedHeatmap = async (userId) => {
   return data;
 };
 
+const getLoginXpStats = async (userId, userPoints = 0) => {
+  const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
+  const [xpStats] = await XpLog.aggregate([
+    { $match: { userId, reason: 'Daily Login' } },
+    {
+      $group: {
+        _id: null,
+        loginXp: { $sum: '$amount' },
+        loginCount: { $sum: 1 }
+      }
+    }
+  ]);
+  const loginXp = xpStats?.loginXp || 0;
+  const loginCount = xpStats?.loginCount || 0;
+  const challengeXp = userPoints - loginXp;
+  return { loginXp, loginCount, challengeXp };
+};
+
 const getDashboardSummary = async (req, res, next) => {
   try {
     const [totalChallenges, pending, solvedDistinct] = await Promise.all([
@@ -206,20 +224,7 @@ const getProfileStats = async (req, res, next) => {
       .limit(10);
 
     // Get XP breakdown
-    const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
-    const [xpStats] = await XpLog.aggregate([
-      { $match: { userId, reason: 'Daily Login' } },
-      {
-        $group: {
-          _id: null,
-          loginXp: { $sum: '$amount' },
-          loginCount: { $sum: 1 }
-        }
-      }
-    ]);
-    const loginXp = xpStats?.loginXp || 0;
-    const loginCount = xpStats?.loginCount || 0;
-    const challengeXp = (user.points || 0) - loginXp;
+    const { loginXp, loginCount, challengeXp } = await getLoginXpStats(userId, user.points);
 
     // Compute unlocked badges dynamically
     const unlockedBadges = await getAllBadgesForUser(userId);
@@ -379,20 +384,7 @@ const getUserProfile = async (req, res, next) => {
       .limit(10);
 
     // Get XP breakdown
-    const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
-    const [xpStats] = await XpLog.aggregate([
-      { $match: { userId, reason: 'Daily Login' } },
-      {
-        $group: {
-          _id: null,
-          loginXp: { $sum: '$amount' },
-          loginCount: { $sum: 1 }
-        }
-      }
-    ]);
-    const loginXp = xpStats?.loginXp || 0;
-    const loginCount = xpStats?.loginCount || 0;
-    const challengeXp = (user.points || 0) - loginXp;
+    const { loginXp, loginCount, challengeXp } = await getLoginXpStats(userId, user.points);
 
     // Global rank using shared utility (DB-level, no full array in RAM)
     const rank = await getUserRank(userId);
@@ -456,25 +448,30 @@ const getUserProfile = async (req, res, next) => {
 
 const getAdminDashboardSummary = async (req, res, next) => {
   try {
-    const totalMembers = await User.countDocuments();
-    const activeClans = await Clan.countDocuments({ status: 'active' });
-    
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    
-    const activeThisWeekResult = await Submission.aggregate([
-      { $match: { submittedAt: { $gte: oneWeekAgo } } },
-      { $group: { _id: "$userId" } },
-      { $count: "activeUsers" }
+
+    const [
+      totalMembers,
+      activeClans,
+      activeThisWeekResult,
+      totalSubmissions,
+      pendingAssignments,
+      clans
+    ] = await Promise.all([
+      User.countDocuments(),
+      Clan.countDocuments({ status: 'active' }),
+      Submission.aggregate([
+        { $match: { submittedAt: { $gte: oneWeekAgo } } },
+        { $group: { _id: "$userId" } },
+        { $count: "activeUsers" }
+      ]),
+      Submission.countDocuments(),
+      User.countDocuments({ clan: null, role: 'user' }),
+      Clan.find({ status: 'active' }).populate('members', '_id points solvedProblems')
     ]);
+
     const activeThisWeek = activeThisWeekResult[0]?.activeUsers || 0;
-    
-    const totalSubmissions = await Submission.countDocuments();
-    
-    const pendingAssignments = await User.countDocuments({ clan: null, role: 'user' });
-    
-    // Fetch all active clans and populate their members (we only need _id)
-    const clans = await Clan.find({ status: 'active' }).populate('members', '_id');
     
     // Gather all member IDs across all active clans
     const memberIds = [];
@@ -516,25 +513,36 @@ const getAdminDashboardSummary = async (req, res, next) => {
 
     const TARGET_PROBLEMS = 5;
     
-    // Compute completion rate for each clan
+    // Compute completion rate and performance for each clan
     const clanCompletions = clans.map(c => {
       const members = c.members || [];
       const memberCount = members.length;
       if (memberCount === 0) {
         return {
           clan: c,
-          completion: 0
+          completion: 0,
+          totalPoints: 0,
+          solvedCount: 0,
+          averagePoints: 0
         };
       }
-      const totalSolved = members.reduce((sum, m) => {
+      let totalSolved = 0;
+      let totalPoints = 0;
+      let totalSolvedCount = 0;
+      members.forEach(m => {
         const solved = weeklySolvedMap[m._id.toString()] || 0;
-        return sum + Math.min(solved, TARGET_PROBLEMS);
-      }, 0);
+        totalSolved += Math.min(solved, TARGET_PROBLEMS);
+        totalPoints += m.points || 0;
+        totalSolvedCount += m.solvedProblems || 0;
+      });
       const totalPossible = memberCount * TARGET_PROBLEMS;
       const completion = Math.round((totalSolved / totalPossible) * 100);
       return {
         clan: c,
-        completion
+        completion,
+        totalPoints,
+        solvedCount: totalSolvedCount,
+        averagePoints: Math.round(totalPoints / memberCount)
       };
     });
 
@@ -543,31 +551,96 @@ const getAdminDashboardSummary = async (req, res, next) => {
       ? Math.round(clanCompletions.reduce((sum, c) => sum + c.completion, 0) / clanCompletions.length)
       : 0;
 
-    // Sort by completion rate descending, sub-sort by name/tag, and limit to 4 for performance display
-    const sortedClans = [...clanCompletions].sort((a, b) => {
-      if (b.completion !== a.completion) {
-        return b.completion - a.completion;
+    // Clans comparison list
+    const clansComparative = clanCompletions.map(c => ({
+      _id: c.clan._id,
+      name: c.clan.name,
+      tag: c.clan.tag,
+      memberCount: c.clan.members?.length || 0,
+      totalPoints: c.totalPoints,
+      solvedCount: c.solvedCount,
+      averagePoints: c.averagePoints,
+      completion: c.completion
+    })).sort((a, b) => b.totalPoints - a.totalPoints);
+
+    // Top 10 members
+    const topMembers = await User.find({ role: 'user' })
+      .select('username email points solvedProblems streak codingLevel clan')
+      .populate('clan', 'name tag')
+      .sort({ points: -1 })
+      .limit(10);
+
+    // Daily submissions activity (last 14 days)
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const dailySubmissions = await Submission.aggregate([
+      { $match: { submittedAt: { $gte: fourteenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const activityTrend = [];
+    const dateMap = {};
+    dailySubmissions.forEach(ds => {
+      dateMap[ds._id] = ds.count;
+    });
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      activityTrend.push({
+        date: dateStr,
+        count: dateMap[dateStr] || 0
+      });
+    }
+
+    // Difficulty stats
+    const difficultyDistribution = await Challenge.aggregate([
+      {
+        $group: {
+          _id: '$difficulty',
+          count: { $sum: 1 }
+        }
       }
-      return a.clan.name.localeCompare(b.clan.name);
+    ]);
+    const difficultyMap = { Easy: 0, Medium: 0, Hard: 0 };
+    difficultyDistribution.forEach(d => {
+      difficultyMap[d._id] = d.count;
     });
-    
-    const topClans = sortedClans.slice(0, 4);
 
-    const colors = [
-      'from-purple-500 to-indigo-500',
-      'from-blue-500 to-cyan-500',
-      'from-green-500 to-emerald-500',
-      'from-orange-500 to-red-500'
-    ];
+    const solvedChallengesStats = await Submission.aggregate([
+      { $match: { status: 'Accepted' } },
+      {
+        $group: {
+          _id: '$challengeId',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
 
-    const clanPerformance = topClans.map((c, i) => {
-      return {
-        name: c.clan.name,
-        tag: c.clan.tag,
-        completion: c.completion,
-        color: colors[i % colors.length]
-      };
+    const challengesList = await Challenge.find({}).select('_id difficulty').lean();
+    const challengeDifficultyMap = {};
+    challengesList.forEach(c => {
+      challengeDifficultyMap[c._id.toString()] = c.difficulty;
     });
+
+    const solvedDifficultyMap = { Easy: 0, Medium: 0, Hard: 0 };
+    solvedChallengesStats.forEach(stat => {
+      const diff = challengeDifficultyMap[stat._id?.toString()];
+      if (diff && solvedDifficultyMap[diff] !== undefined) {
+        solvedDifficultyMap[diff] += stat.count;
+      }
+    });
+
+    const difficultyStats = {
+      total: difficultyMap,
+      solved: solvedDifficultyMap
+    };
 
     return sendSuccess(res, {
       data: {
@@ -577,7 +650,10 @@ const getAdminDashboardSummary = async (req, res, next) => {
         totalSubmissions,
         avgCompletion,
         pendingAssignments,
-        clanPerformance
+        clansComparative,
+        topMembers,
+        activityTrend,
+        difficultyStats
       }
     });
   } catch (err) {

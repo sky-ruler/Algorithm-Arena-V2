@@ -7,6 +7,7 @@ const { Readable } = require('stream');
 const mammoth = require('mammoth');
 const { fetchLeetCodeDetails } = require('../../../services/leetcode.service');
 const { cleanupSubmissionsAndUserStats } = require('./challenge.service');
+const { getPointsForDifficulty } = require('../../../utils/xp');
 
 const getChallenges = async (req, res, next) => {
   try {
@@ -149,7 +150,7 @@ const getChallenges = async (req, res, next) => {
           title: q.title,
           description: q.description || '',
           difficulty: q.difficulty || 'Easy',
-          points: q.points || 100,
+          points: getPointsForDifficulty(q.difficulty || 'Easy'),
           category: q.category || 'Logic',
           tags: q.tags || [],
           codeSnippets: q.codeSnippets || [],
@@ -157,6 +158,7 @@ const getChallenges = async (req, res, next) => {
           functionName: q.functionName || '',
           params: q.params || [],
           returnType: q.returnType || '',
+          orderIndependent: !!q.orderIndependent,
           testCases: q.testCases || [],
           questionSetId: questionSet._id,
         }));
@@ -196,6 +198,7 @@ const getChallengeById = async (req, res, next) => {
 
 const createChallenge = async (req, res, next) => {
   try {
+    req.body.points = getPointsForDifficulty(req.body.difficulty);
     const challenge = await Challenge.create(req.body);
 
     await logAudit({
@@ -229,6 +232,11 @@ const createChallenge = async (req, res, next) => {
 
 const updateChallenge = async (req, res, next) => {
   try {
+    if (req.body.difficulty) {
+      req.body.points = getPointsForDifficulty(req.body.difficulty);
+    } else {
+      delete req.body.points;
+    }
     const challenge = await Challenge.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
@@ -350,7 +358,7 @@ const importChallenges = async (req, res, next) => {
       description: stripHtml(c.description) || 'No description provided.',
       difficulty: ['Easy', 'Medium', 'Hard'].includes(c.difficulty) ? c.difficulty : 'Medium',
       category: stripHtml(c.category) || 'General',
-      points: Number(c.points) || 100,
+      points: getPointsForDifficulty(['Easy', 'Medium', 'Hard'].includes(c.difficulty) ? c.difficulty : 'Medium'),
       solutions: Array.isArray(c.solutions) ? c.solutions : [],
       testCases: c.testCases && Array.isArray(c.testCases) ? c.testCases : [],
     }));

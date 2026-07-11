@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { getDifficultyRGB } from "../constants/difficulty";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import {
@@ -316,15 +317,6 @@ const getDeadlineNudge = (set, now, subsMap) => {
   return pick(set.title);
 };
 
-const getRGB = (d) =>
-  d === "Easy"
-    ? "34,197,94"
-    : d === "Medium"
-      ? "234,179,8"
-      : d === "Hard"
-        ? "239,68,68"
-        : "99,102,241";
-
 const buildQS = ({ page, limit, search, difficulty, category }) => {
   const p = new URLSearchParams();
   p.set("page", page);
@@ -337,12 +329,6 @@ const buildQS = ({ page, limit, search, difficulty, category }) => {
   if (category) p.set("category", category);
   return p.toString();
 };
-
-const fd = (d = 0) => ({
-  initial: { opacity: 0, y: 14 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.38, delay: d, ease: "easeOut" },
-});
 
 /* ══════════════════════════════════════════════
    DASHBOARD
@@ -384,6 +370,7 @@ const Dashboard = () => {
   /* ── queries ─────────────────────────────── */
   const challengesQ = useQuery({
     queryKey: ["dash-challenges", filters],
+    staleTime: 30_000,
     queryFn: async () => {
       const queryParams = { ...filters, limit: 20 };
       const r = await api.get(`/api/challenges?${buildQS(queryParams)}`);
@@ -393,6 +380,7 @@ const Dashboard = () => {
 
   const summaryQ = useQuery({
     queryKey: ["dash-summary"],
+    staleTime: 30_000,
     queryFn: async () => {
       const r = await api.get("/api/dashboard/summary");
       return r.data.data || {};
@@ -401,6 +389,7 @@ const Dashboard = () => {
 
   const profileQ = useQuery({
     queryKey: ["dash-profile"],
+    staleTime: 30_000,
     queryFn: async () => {
       const r = await api.get("/api/profile/stats");
       return r.data.data || {};
@@ -653,8 +642,7 @@ const Dashboard = () => {
     <div className="space-y-8 pb-12">
       {/* ── Warning ─────────────────────────── */}
       {user?.status === "Warned" && showWarning && (
-        <motion.div
-          {...fd(0)}
+        <div
           className="flex items-center gap-3 p-4 rounded-xl border border-red-500/40 bg-red-500/8"
         >
           <FiAlertTriangle className="text-red-400 text-lg flex-shrink-0" />
@@ -663,11 +651,11 @@ const Dashboard = () => {
             {user?.warningMessage ||
               "You have an active warning from your Clan Chief. Please review your activity."}
           </p>
-        </motion.div>
+        </div>
       )}
 
       {/* ── Greeting ────────────────────────── */}
-      <motion.div {...fd(0.04)}>
+      <div>
         <h2 className="text-2xl font-black text-primary mb-1 font-h2">
           {greeting.heading.replace(
             "{username}",
@@ -678,18 +666,54 @@ const Dashboard = () => {
         </h2>
         <p className="text-secondary text-sm">{greeting.subtext}</p>
         {deadlineNudge && (
-          <motion.div
-            {...fd(0.06)}
+          <div
             className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300 text-xs font-semibold"
           >
             <FiClock className="shrink-0" />
             <span>{deadlineNudge}</span>
-          </motion.div>
+          </div>
         )}
-      </motion.div>
+      </div>
+
+      {/* ── Continue Card ────────────────────── */}
+      {(() => {
+        const continueItem = drafts[0] || recentSubs.find(s => s.status === "Pending" || s.status === "Attempted");
+        if (!continueItem) return null;
+        const ch = continueItem.challengeId;
+        const isDraft = continueItem.status === "Attempted";
+        return (
+          <Link
+            to={`/challenge/${ch?._id}`}
+            className="group surface-card flex items-center gap-4 p-4 hover:border-accent/40 transition-all"
+          >
+            <div className="w-10 h-10 rounded-lg bg-accent/15 flex items-center justify-center text-accent shrink-0">
+              <FiArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-0.5">
+                {isDraft ? "Continue where you left off" : "Pending Review"}
+              </p>
+              <p className="text-sm font-bold text-primary truncate group-hover:text-accent transition-colors">
+                {ch?.title || "Unknown Challenge"}
+              </p>
+            </div>
+            {ch?.difficulty && (
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                style={{ color: `rgb(${getDifficultyRGB(ch.difficulty)})`, backgroundColor: `rgba(${getDifficultyRGB(ch.difficulty)}, 0.15)` }}
+              >
+                {ch.difficulty}
+              </span>
+            )}
+            {ch?.points > 0 && (
+              <span className="text-xs font-bold text-accent shrink-0">{ch.points} XP</span>
+            )}
+          </Link>
+        );
+      })()}
 
       {/* ── Hero Carousel ────────────────────────── */}
-      <motion.div {...fd(0.08)} className="relative">
+      <div className="relative">
         {/* card shell */}
         <div
           className={`relative overflow-hidden rounded-2xl group transition-all duration-300 border transition-shadow duration-500
@@ -953,10 +977,10 @@ const Dashboard = () => {
             ))}
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* ── Stat bar ────────────────────────── */}
-      <motion.div {...fd(0.12)}>
+      <div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             {
@@ -986,9 +1010,7 @@ const Dashboard = () => {
           ].map(({ icon: Icon, label, value, color }) => (
             <div
               key={label}
-              className="flex items-center gap-3 p-4 rounded-xl border border-black/[0.15] dark:border-white/[0.11] transition-all hover:scale-[1.02]
-              hover:shadow-[0_10px_20px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.05)]
-              dark:hover:shadow-[0_0_40px_rgba(var(--accent-rgb),0.25),0_10px_20px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)]"
+              className="surface-card card-static flex items-center gap-3 p-4"
             >
               <Icon size={16} className={`${color} opacity-50 flex-shrink-0`} />
               <div className="min-w-0">
@@ -1008,12 +1030,12 @@ const Dashboard = () => {
             </div>
           ))}
         </div>
-      </motion.div>
+      </div>
 
       {/* ── Two-column: Missions + Activity ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         {/* LEFT: Available Missions */}
-        <motion.div {...fd(0.16)} className="space-y-4">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-black text-primary font-h2">
               Available Missions
@@ -1099,7 +1121,7 @@ const Dashboard = () => {
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {availableChallenges.map((ch, i) => {
+              {availableChallenges.map((ch) => {
                 const diffCls =
                   ch.difficulty === "Easy"
                     ? "bg-green-500/15 text-green-400 border-green-500/25"
@@ -1108,12 +1130,7 @@ const Dashboard = () => {
                       : "bg-red-500/15 text-red-400 border-red-500/25";
                 const badge = getCardBadge(ch._id, subsMap, drafts);
                 return (
-                  <motion.div
-                    key={ch._id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                  >
+                  <div key={ch._id}>
                     <Link
                       to={`/challenge/${ch._id}`}
                       className="group block h-full"
@@ -1121,7 +1138,7 @@ const Dashboard = () => {
                       <ChallengeCard
                         className="h-full p-5 !rounded-2xl"
                         innerClassName="flex flex-col gap-3 h-full justify-between w-full"
-                        difficultyColor={getRGB(ch.difficulty)}
+                        difficultyColor={getDifficultyRGB(ch.difficulty)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1180,15 +1197,15 @@ const Dashboard = () => {
                         </div>
                       </ChallengeCard>
                     </Link>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
           )}
-        </motion.div>
+        </div>
 
         {/* RIGHT: Recent Activity */}
-        <motion.div {...fd(0.18)} className="space-y-4">
+        <div className="space-y-4">
           <h2 className="text-base font-black text-primary flex items-center gap-2 font-h2">
             <FiActivity className="text-accent" size={16} /> Recent Activity
           </h2>
@@ -1277,7 +1294,7 @@ const Dashboard = () => {
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

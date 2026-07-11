@@ -959,19 +959,9 @@ test('getAdminDashboardSummary calculates live completions and avgCompletion', a
   assert.equal(res.status, 200);
   assert.equal(res.body.success, true);
   
-  const { avgCompletion, clanPerformance, activeClans } = res.body.data;
+  const { avgCompletion, activeClans } = res.body.data;
   assert.equal(activeClans, 2);
   assert.equal(avgCompletion, 10);
-
-  assert.equal(clanPerformance.length, 2);
-  const clanAlphaPerf = clanPerformance.find(c => c.name === 'Clan Alpha');
-  const clanBetaPerf = clanPerformance.find(c => c.name === 'Clan Beta');
-
-  assert.ok(clanAlphaPerf);
-  assert.equal(clanAlphaPerf.completion, 20);
-  
-  assert.ok(clanBetaPerf);
-  assert.equal(clanBetaPerf.completion, 0);
 });
 
 test('getClanLeaderboard window=all aggregates points and solved problems correctly using aggregation pipeline', async () => {

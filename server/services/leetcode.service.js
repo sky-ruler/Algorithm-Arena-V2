@@ -37,13 +37,16 @@ const cleanExpectedOutput = (val) => {
 
 /**
  * Extract expected output strings from LeetCode's HTML description.
- */ 
+ */
 const extractExpectedOutputs = (html) => {
   const results = [];
-  const rx = /<strong[^>]*>Output:<\/strong>:?\s*([^\n<]+)/gi;
+  // The value after "Output:</strong>" often wraps its content in extra inline
+  // tags (e.g. <code>true</code>), so capture the whole rest of the line and
+  // strip any tags from it afterwards rather than stopping at the first "<".
+  const rx = /<strong[^>]*>Output:<\/strong>:?\s*([^\n]*)/gi;
   let m;
   while ((m = rx.exec(html)) !== null) {
-    const val = m[1].trim();
+    const val = m[1].replace(/<\/?[^>]+>/g, '').trim();
     if (val) results.push(cleanExpectedOutput(val));
   }
   return results;
@@ -115,12 +118,23 @@ exports.fetchLeetCodeDetails = async (slug) => {
     let functionName = "";
     let params = [];
     let returnType = "";
+    let orderIndependent = false;
     try {
       const meta = JSON.parse(question.metaData || "{}");
       functionName = meta.name || "";
       params = meta.params || [];
       returnType = meta.return?.type || "";
+      if (meta.output?.paramindex === -1 && /list\[list/i.test(returnType)) {
+        orderIndependent = true;
+      }
     } catch { /* leave empty */ }
+
+    // Heuristic: problems returning nested lists (e.g. List[List[str]]) whose
+    // description contains phrases like "in any order" are order-independent.
+    const desc = (question.content || "").toLowerCase();
+    if (/list\[list/i.test(returnType) && /any\s*order|order.*does\s*n.?t\s*matter/i.test(desc)) {
+      orderIndependent = true;
+    }
 
     // Build testCases from exampleTestcaseList + HTML expected outputs
     const expectedOutputs = extractExpectedOutputs(question.content || "");
@@ -139,6 +153,7 @@ exports.fetchLeetCodeDetails = async (slug) => {
       functionName,
       params,
       returnType,
+      orderIndependent,
       testCases,
     };
   } catch (error) {
