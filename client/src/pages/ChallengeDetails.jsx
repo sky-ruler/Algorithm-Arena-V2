@@ -66,7 +66,7 @@ const ChallengeDetails = () => {
   const { user } = useAuth();
   const draftKey = `challenge-draft:${id}`;
 
-  const isReviewer = ["admin", "super-admin", "clan-chief"].includes(
+  const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(
     user?.role,
   );
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;

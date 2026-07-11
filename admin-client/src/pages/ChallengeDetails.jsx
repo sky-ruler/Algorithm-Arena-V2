@@ -117,7 +117,7 @@ const ChallengeDetails = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const isReviewer = ["admin", "super-admin", "clan-chief"].includes(user?.role);
+  const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(user?.role);
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
 
   const [codeByLang, setCodeByLang] = useState({});
