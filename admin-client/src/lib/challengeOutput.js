@@ -1,4 +1,5 @@
-// Re-export from shared canonical copy to avoid duplication.
+// Re-export from shared canonical copy — ensures admin reviewers and participants
+// use identical output-comparison logic (including float tolerance, order-independence, etc.)
 export {
   LANG_LITERALS,
   decodeHtmlEntities,
