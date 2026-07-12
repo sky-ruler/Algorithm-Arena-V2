@@ -7,10 +7,37 @@ import { FiTrash2, FiSearch, FiX } from "react-icons/fi";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import SkeletonCard from "../../components/SkeletonCard";
 import EmptyState from "../../components/EmptyState";
+import CodeEditor from "../../components/CodeEditor";
+import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../../constants/languages";
 import { api } from "../../lib/api";
-import { USE_MOCK, filterSubmissions } from "../../lib/mockData";
+import { isDrivableSignature } from "../../lib/leetcodeDriver";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Render a human-readable signature string so admins can verify fetched types. */
+const SignatureInfo = ({ functionName, params, returnType }) => {
+  const hasParams = Array.isArray(params) && params.length > 0;
+  if (!functionName && !hasParams && !returnType) return null;
+
+  const paramsStr = hasParams
+    ? params.map((p) => `${p.name}: ${p.type}`).join(", ")
+    : "(none)";
+  const javaOk = isDrivableSignature("java", params, returnType);
+  const cppOk = isDrivableSignature("cpp", params, returnType);
+
+  return (
+    <div className="text-[11px] font-mono bg-black/5 dark:bg-white/5 rounded px-2 py-1.5 mt-1 text-secondary">
+      <div>
+        {functionName || "?"}({paramsStr}) → {returnType || "?"}
+      </div>
+      <div className="mt-0.5">
+        Java driver: <span className={javaOk ? "text-green-500" : "text-red-500"}>{javaOk ? "supported" : "not supported"}</span>
+        {"  ·  "}
+        C++ driver: <span className={cppOk ? "text-green-500" : "text-red-500"}>{cppOk ? "supported" : "not supported"}</span>
+      </div>
+    </div>
+  );
+};
 
 const defaultChallengeForm = {
   title: "",
@@ -21,7 +48,10 @@ const defaultChallengeForm = {
   category: "Logic",
   tags: [],
   codeSnippets: [],
+  solutions: [],
   functionName: "",
+  params: [],
+  returnType: "",
   testCases: [],
 };
 
@@ -36,8 +66,40 @@ const prepareTestCases = (rawCases) =>
 
 const emptyTestCase = () => ({ label: "", args: "[]", expected: "" });
 
-const mockDelay = () => new Promise((r) => setTimeout(r, 400));
+const prepareSolutions = (solutions = []) =>
+  solutions
+    .filter((solution) => solution.code?.trim())
+    .map((solution) => ({
+      lang:
+        solution.lang ||
+        LANGUAGE_OPTIONS.find((opt) => opt.key === solution.langSlug)?.label ||
+        solution.langSlug,
+      langSlug: solution.langSlug,
+      code: solution.code,
+    }));
 
+const upsertSolution = (solutions = [], langSlug, code) => {
+  const lang =
+    LANGUAGE_OPTIONS.find((opt) => opt.key === langSlug)?.label || langSlug;
+  const next = solutions.filter((solution) => solution.langSlug !== langSlug);
+  if (code.trim()) next.push({ lang, langSlug, code });
+  return next;
+};
+
+/** Decode HTML entities and strip outer quotes from expected values. */
+const cleanExpected = (val) => {
+  if (!val) return val;
+  let s = val
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim();
+  if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) s = s.slice(1, -1);
+  return s;
+};
 // ── component ─────────────────────────────────────────────────────────────────
 
 const ChallengesTab = () => {
@@ -48,6 +110,7 @@ const ChallengesTab = () => {
   const [leetcodeInput, setLeetcodeInput] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [snippetPreviewLang, setSnippetPreviewLang] = useState("");
+  const [solutionLangByKey, setSolutionLangByKey] = useState({});
 
   const handleAutoFill = async () => {
     if (!leetcodeInput) return toast.error("Please enter a slug or URL");
@@ -62,7 +125,7 @@ const ChallengesTab = () => {
       const res = await api.get(
         `/api/challenges/fetch-leetcode-details?slug=${slug}`,
       );
-      const { title, content, difficulty, topicTags, codeSnippets, functionName, testCases } =
+      const { title, content, difficulty, topicTags, codeSnippets, functionName, params, returnType, testCases } =
         res.data.data;
 
       const tags = (topicTags || []).map((t) => t.name);
@@ -77,9 +140,12 @@ const ChallengesTab = () => {
         tags,
         codeSnippets: codeSnippets || [],
         functionName: functionName || prev.functionName,
+        params: params || prev.params,
+        returnType: returnType || prev.returnType,
         testCases: (testCases || []).map((tc) => ({
           ...tc,
           args: JSON.stringify(tc.args),
+          expected: cleanExpected(tc.expected),
         })),
       }));
 
@@ -126,7 +192,6 @@ const ChallengesTab = () => {
     queryKey: ["admin-submissions", reviewFilters],
     enabled: activeTab === "review",
     queryFn: async () => {
-      if (USE_MOCK) return filterSubmissions(reviewFilters);
       const params = new URLSearchParams();
       params.set("page", String(reviewFilters.page));
       params.set("limit", String(reviewFilters.limit));
@@ -194,18 +259,14 @@ const ChallengesTab = () => {
     },
   });
 
-  // ── handlers ──────────────────────────────────────────────────────────────
   const onCreateChallenge = async (e) => {
     e.preventDefault();
     try {
-      if (USE_MOCK) {
-        await mockDelay();
-      } else {
-        await api.post("/api/challenges", {
-          ...createForm,
-          testCases: prepareTestCases(createForm.testCases),
-        });
-      }
+      await api.post("/api/challenges", {
+        ...createForm,
+        solutions: prepareSolutions(createForm.solutions),
+        testCases: prepareTestCases(createForm.testCases),
+      });
       toast.success("Challenge created");
       setCreateForm(defaultChallengeForm);
       queryClient.invalidateQueries({ queryKey: ["admin-challenges"] });
@@ -217,20 +278,19 @@ const ChallengesTab = () => {
   const onUpdateChallenge = async () => {
     if (!editingChallenge) return;
     try {
-      if (USE_MOCK) {
-        await mockDelay();
-      } else {
-        await api.put(`/api/challenges/${editingChallenge._id}`, {
-          title: editingChallenge.title,
-          description: editingChallenge.description,
-          link: editingChallenge.link || "",
-          difficulty: editingChallenge.difficulty,
-          points: Number(editingChallenge.points),
-          category: editingChallenge.category,
-          functionName: editingChallenge.functionName || "",
-          testCases: prepareTestCases(editingChallenge.testCases || []),
-        });
-      }
+      await api.put(`/api/challenges/${editingChallenge._id}`, {
+        title: editingChallenge.title,
+        description: editingChallenge.description,
+        link: editingChallenge.link || "",
+        difficulty: editingChallenge.difficulty,
+        points: Number(editingChallenge.points),
+        category: editingChallenge.category,
+        solutions: prepareSolutions(editingChallenge.solutions || []),
+        functionName: editingChallenge.functionName || "",
+        params: editingChallenge.params || [],
+        returnType: editingChallenge.returnType || "",
+        testCases: prepareTestCases(editingChallenge.testCases || []),
+      });
       toast.success("Challenge updated");
       setEditingChallenge(null);
       queryClient.invalidateQueries({ queryKey: ["admin-challenges"] });
@@ -242,11 +302,7 @@ const ChallengesTab = () => {
   const onDeleteChallenge = async () => {
     if (!deleteTarget) return;
     try {
-      if (USE_MOCK) {
-        await mockDelay();
-      } else {
-        await api.delete(`/api/challenges/${deleteTarget._id}`);
-      }
+      await api.delete(`/api/challenges/${deleteTarget._id}`);
       toast.success("Challenge deleted");
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["admin-challenges"] });
@@ -257,11 +313,7 @@ const ChallengesTab = () => {
 
   const onGrade = async (id, status) => {
     try {
-      if (USE_MOCK) {
-        await mockDelay();
-      } else {
-        await api.put(`/api/submissions/${id}`, { status });
-      }
+      await api.put(`/api/submissions/${id}`, { status });
       toast.success(`Submission marked ${status}`);
       queryClient.invalidateQueries({ queryKey: ["admin-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -279,6 +331,55 @@ const ChallengesTab = () => {
     if (reviewFilters.status === "Rejected") return "Rejected";
     return "All";
   }, [reviewFilters.status]);
+
+  const renderSolutionEditor = ({ editorKey, solutions = [], onChange }) => {
+    const selectedLang =
+      solutionLangByKey[editorKey] ||
+      solutions.find((solution) => solution.code?.trim())?.langSlug ||
+      "javascript";
+    const selectedCode =
+      solutions.find((solution) => solution.langSlug === selectedLang)?.code ||
+      "";
+
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="field-label mb-0">Uploaded Solution</label>
+          <select
+            className="field-select text-xs w-44 py-1"
+            value={selectedLang}
+            onChange={(e) =>
+              setSolutionLangByKey((prev) => ({
+                ...prev,
+                [editorKey]: e.target.value,
+              }))
+            }
+          >
+            {LANGUAGE_OPTIONS.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {opt.label}{opt.version && ` (${opt.version})`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="h-[260px] overflow-hidden rounded-xl border border-black/10 dark:border-white/10 bg-black/20">
+          <CodeEditor
+            value={selectedCode}
+            onChange={(value) =>
+              onChange(upsertSolution(solutions, selectedLang, value || ""))
+            }
+            language={LANGUAGE_MAP[selectedLang]?.monacoLang ?? selectedLang}
+            isDark={true}
+            height="260px"
+          />
+        </div>
+        <p className="text-[11px] text-secondary">
+          Paste the optimal solution for the selected language. Blank languages
+          are ignored when saved.
+        </p>
+      </div>
+    );
+  };
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -499,6 +600,13 @@ const ChallengesTab = () => {
                 </div>
               )}
 
+              {renderSolutionEditor({
+                editorKey: "create-challenge",
+                solutions: createForm.solutions || [],
+                onChange: (solutions) =>
+                  setCreateForm((prev) => ({ ...prev, solutions })),
+              })}
+
               {/* Function Name */}
               <div>
                 <label className="field-label">Solution Function Name</label>
@@ -514,6 +622,11 @@ const ChallengesTab = () => {
                 <p className="text-[11px] text-secondary mt-1">
                   Used to auto-call the function when running JS / Python.
                 </p>
+                <SignatureInfo
+                  functionName={createForm.functionName}
+                  params={createForm.params}
+                  returnType={createForm.returnType}
+                />
               </div>
 
               {/* Test Cases Editor */}
@@ -956,9 +1069,11 @@ const ChallengesTab = () => {
                       onClick={() =>
                         setEditingChallenge({
                           ...challenge,
+                          solutions: challenge.solutions || [],
                           testCases: (challenge.testCases || []).map((tc) => ({
                             ...tc,
                             args: JSON.stringify(tc.args ?? []),
+                            expected: cleanExpected(tc.expected),
                           })),
                         })
                       }
@@ -982,7 +1097,7 @@ const ChallengesTab = () => {
       {/* ── Edit Challenge Modal ─────────────────────────────────────── */}
       {editingChallenge && (
         <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="macos-glass w-full max-w-3xl p-6 space-y-4">
+          <div className="macos-glass w-full max-w-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-section-title font-bold">Edit Challenge</h3>
             <div>
               <label className="field-label">Title</label>
@@ -1062,6 +1177,14 @@ const ChallengesTab = () => {
                 }
               />
             </div>
+
+            {renderSolutionEditor({
+              editorKey: "edit-challenge",
+              solutions: editingChallenge.solutions || [],
+              onChange: (solutions) =>
+                setEditingChallenge((prev) => ({ ...prev, solutions })),
+            })}
+
             {/* Function Name */}
             <div>
               <label className="field-label">Solution Function Name</label>
@@ -1073,6 +1196,11 @@ const ChallengesTab = () => {
                 onChange={(e) =>
                   setEditingChallenge((p) => ({ ...p, functionName: e.target.value.trim() }))
                 }
+              />
+              <SignatureInfo
+                functionName={editingChallenge.functionName}
+                params={editingChallenge.params}
+                returnType={editingChallenge.returnType}
               />
             </div>
 

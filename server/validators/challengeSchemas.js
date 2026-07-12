@@ -12,10 +12,17 @@ const codeSnippetSchema = z.object({
   code: z.string().min(1),
 });
 
+const solutionSchema = codeSnippetSchema;
+
 const testCaseSchema = z.object({
   label: z.string().trim().min(1),
   args: z.any(),
   expected: z.string().min(1),
+});
+
+const paramSchema = z.object({
+  name: z.string().trim().min(1),
+  type: z.string().trim().min(1),
 });
 
 const challengeCreateSchema = {
@@ -27,10 +34,14 @@ const challengeCreateSchema = {
     category: z.string().trim().min(2).max(80).default('Logic'),
     tags: z.array(z.string().trim()).optional().default([]),
     codeSnippets: z.array(codeSnippetSchema).optional().default([]),
+    solutions: z.array(solutionSchema).optional().default([]),
     functionName: z.string().trim().optional().default(''),
+    params: z.array(paramSchema).optional().default([]),
+    returnType: z.string().trim().optional().default(''),
+    orderIndependent: z.coerce.boolean().optional().default(false),
     testCases: z.array(testCaseSchema).optional().default([]),
     link: z.string().url().optional().or(z.literal('')),
-    questionSetId: z.string().length(24).optional(), 
+    questionSetId: z.string().length(24).optional(),
   }),
 };
 
@@ -44,7 +55,11 @@ const challengeUpdateSchema = {
       category: z.string().trim().min(2).max(80).optional(),
       tags: z.array(z.string().trim()).optional(),
       codeSnippets: z.array(codeSnippetSchema).optional(),
+      solutions: z.array(solutionSchema).optional(),
       functionName: z.string().trim().optional(),
+      params: z.array(paramSchema).optional(),
+      returnType: z.string().trim().optional(),
+      orderIndependent: z.coerce.boolean().optional(),
       testCases: z.array(testCaseSchema).optional(),
       link: z.string().url().optional().or(z.literal('')),
       questionSetId: z.string().length(24).optional(),

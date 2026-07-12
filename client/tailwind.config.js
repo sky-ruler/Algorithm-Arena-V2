@@ -32,6 +32,22 @@ export default {
           surface: "var(--glass-surface)",
           border: "var(--glass-border-color)", // We will define this in index.css
         },
+
+        surface: {
+          1: "var(--surface-1)",
+          2: "var(--surface-2)",
+          overlay: "var(--surface-overlay)",
+        },
+      },
+      borderRadius: {
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
+        xl: "var(--radius-xl)",
+      },
+      borderColor: {
+        subtle: "var(--border-subtle)",
+        strong: "var(--border-strong)",
       },
       animation: {
         float: "float 20s ease-in-out infinite",

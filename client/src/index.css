@@ -7,7 +7,7 @@
 
 /* Default Stack Imports: Inter (Body), Michroma & Orbitron (Headings) */
 @import url("https://rsms.me/inter/inter.css");
-@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Orbitron:wght@400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..600&family=Michroma&family=Orbitron:wght@400..900&family=Space+Grotesk:wght@300..700&display=swap');
 
 /* Additional Alternative Premium Fonts (Pre-imported for easy testing): */
 /*
@@ -18,7 +18,6 @@
    - Syne: Expressive, artistic headline font
    - Montserrat: Bold, high-character sans-serif
 */
-@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,400;1,200&family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 
 /* Tailwind Engine Directives */
 @tailwind base;
@@ -63,7 +62,22 @@
     --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
     --radius-lg: 1rem;
-    --radius-xl: 1.25rem;
+    --radius-xl: 1.5rem;
+
+    /* Surfaces (glass without blur — translucent fill + border + catch-light) */
+    --surface-1: rgba(255, 255, 255, 0.66);
+    --surface-2: rgba(15, 23, 42, 0.04);
+    --surface-overlay: rgba(255, 255, 255, 0.82);
+
+    /* Borders */
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --border-strong: rgba(15, 23, 42, 0.16);
+    --edge-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+
+    /* Difficulty (single source of truth, RGB triplets) */
+    --diff-easy: 34, 197, 94;
+    --diff-medium: 234, 179, 8;
+    --diff-hard: 239, 68, 68;
 
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
     --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -116,12 +130,24 @@
     --glass-spotlight: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y),
             rgba(99, 102, 241, 0.15),
             transparent 40%);
+
+    --surface-1: rgba(20, 22, 31, 0.62);
+    --surface-2: rgba(255, 255, 255, 0.045);
+    --surface-overlay: rgba(10, 10, 15, 0.78);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --edge-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+}
+
+html {
+    scrollbar-gutter: stable;
+    overflow-y: scroll;
 }
 
 body {
@@ -222,12 +248,10 @@ body {
 }
 
 .macos-glass {
-    background: var(--glass-surface);
-    backdrop-filter: blur(4px) saturate(120%);
-    -webkit-backdrop-filter: blur(4px) saturate(120%);
-    border: 1px solid var(--glass-border-color);
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
     box-shadow: var(--glass-shadow);
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -442,6 +466,80 @@ samp,
         width: 100%;
         border-collapse: collapse;
     }
+
+    /* ── Surface system ─────────────────────────────────────── */
+    .surface-card {
+        position: relative;
+        background: var(--surface-1);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        transition:
+            border-color 0.22s ease,
+            transform 0.22s ease,
+            box-shadow 0.22s ease;
+    }
+
+    /* Top catch-light: the "glass" read, no filter cost */
+    .surface-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 12px;
+        right: 12px;
+        height: 1px;
+        background: var(--edge-highlight);
+        opacity: 0.8;
+        pointer-events: none;
+    }
+
+    /* Spotlight — coordinates written by lib/spotlight.js */
+    .surface-card[data-spotlight]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: radial-gradient(480px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+                rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.12),
+                transparent 40%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+    }
+
+    @media (hover: hover) {
+        .surface-card:not(.card-static):hover {
+            border-color: rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.45);
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 0 0.5px rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.18),
+                0 8px 24px rgba(0, 0, 0, 0.1);
+        }
+
+        .surface-card[data-spotlight]:not(.card-static):hover::after {
+            opacity: 1;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .surface-card[data-spotlight]::after {
+            display: none;
+        }
+    }
+
+    /* Overlay surfaces — the ONLY place backdrop-filter is allowed */
+    .surface-overlay {
+        background: var(--surface-overlay);
+        backdrop-filter: blur(12px) saturate(140%);
+        -webkit-backdrop-filter: blur(12px) saturate(140%);
+        border: 1px solid var(--border-subtle);
+    }
+
+    /* Inset/nested areas (code examples, table heads) */
+    .surface-inset {
+        background: var(--surface-2);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+    }
 }
 
 @media (max-width: 768px) {
@@ -484,24 +582,6 @@ samp,
     font-size: 0.9rem;
     line-height: 1.65;
     color: var(--fg-secondary);
-}
-
-.leetcode-description::selection,
-.leetcode-description *::selection,
-.footer-page::selection,
-.footer-page *::selection {
-    background-color: transparent !important;
-    color: #000000 !important;
-    text-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
-}
-
-[data-theme="dark"] .leetcode-description::selection,
-[data-theme="dark"] .leetcode-description *::selection,
-[data-theme="dark"] .footer-page::selection,
-[data-theme="dark"] .footer-page *::selection {
-    background-color: transparent !important;
-    color: #ffffff !important;
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
 }
 
 .leetcode-description p {
@@ -573,21 +653,6 @@ samp,
     margin-top: 0.35rem;
 }
 
-/* Local Accent Overrides for Challenge Details Page */
-.challenge-details-theme {
-    /* Light Mode: Accent is blue */
-    --accent-primary: #4f46e5;
-    --accent-rgb: 79, 70, 229;
-    --accent-glow: rgba(79, 70, 229, 0.25);
-}
-
-[data-theme="dark"] .challenge-details-theme {
-    /* Dark Mode: Accent is yellow */
-    --accent-primary: #eabe11ff;
-    --accent-rgb: 234, 190, 17;
-    --accent-glow: rgba(234, 190, 17, 0.4);
-}
-
 /* Responsive Viewport Improvements */
 @media (max-width: 640px) {
     .app-container {
@@ -624,58 +689,14 @@ samp,
     border: 1px solid rgba(var(--accent-rgb), 0.2);
 }
 
-/* Footer Social Icons Default and Hover States */
-.social-icon {
-    border-color: rgba(var(--accent-rgb), 0.25) !important;
+/* First-Place Podium — static gold treatment (no infinite animations) */
+.podium-gold-static {
+    box-shadow: 0 0 16px rgba(250, 204, 21, 0.45), inset 0 0 6px rgba(250, 204, 21, 0.15);
+    border-color: rgba(250, 204, 21, 0.6);
 }
 
-.social-whatsapp:hover {
-    color: #25D366 !important;
-    border-color: #25D366 !important;
-    background-color: rgba(37, 211, 102, 0.1) !important;
-}
-
-.social-instagram:hover {
-    color: #E1306C !important;
-    border-color: #E1306C !important;
-    background-color: rgba(225, 48, 108, 0.1) !important;
-}
-.social-linkedin:hover {
-    color: #0077B5 !important;
-    border-color: #0077B5 !important;
-    background-color: rgba(0, 119, 181, 0.1) !important;
-}
-
-/* First-Place Podium Golden Glow Animations */
-@keyframes golden-glow {
-    0%, 100% {
-        box-shadow: 0 0 12px rgba(250, 204, 21, 0.4), inset 0 0 8px rgba(250, 204, 21, 0.2);
-        border-color: rgba(250, 204, 21, 0.6) !important;
-    }
-    50% {
-        box-shadow: 0 0 28px rgba(250, 204, 21, 0.85), inset 0 0 12px rgba(250, 204, 21, 0.45);
-        border-color: rgba(250, 204, 21, 0.95) !important;
-    }
-}
-
-.podium-gold-glow {
-    animation: golden-glow 2.5s infinite ease-in-out;
-}
-
-@keyframes trophy-gold-glow {
-    0%, 100% {
-        filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.5));
-        transform: scale(1) translateY(0);
-    }
-    50% {
-        filter: drop-shadow(0 0 16px rgba(250, 204, 21, 0.95));
-        transform: scale(1.1) translateY(-2px);
-    }
-}
-
-.podium-trophy-gold {
-    animation: trophy-gold-glow 2.5s infinite ease-in-out;
-    transform-origin: center bottom;
+.podium-trophy-static {
+    filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.6));
 }
 
 /* Panel slide-in animations (lg screens only) */

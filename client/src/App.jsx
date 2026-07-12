@@ -2,6 +2,8 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+import { MotionConfig } from 'framer-motion';
+import { initSpotlight } from './lib/spotlight';
 
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -41,6 +43,8 @@ function App() {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  React.useEffect(() => initSpotlight(), []);
+
   const handleLoginSuccess = () => {};
 
   const handleLogout = () => {
@@ -49,20 +53,21 @@ function App() {
   };
 
   return (
-    <div className="app-container">
-      <div className="fixed bottom-20 sm:bottom-6 right-6 z-[60]">
-        <ThemeToggle />
-      </div>
-      <NotificationListener />
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="/register" element={<Navigate to="/login" replace />} />
+    <MotionConfig reducedMotion="user">
+      <div className="app-container">
+        <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[60]">
+          <ThemeToggle />
+        </div>
+        <NotificationListener />
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+            <Route path="/register" element={<Navigate to="/login" replace />} />
 
           <Route
             element={
@@ -87,19 +92,20 @@ function App() {
             <Route path="/badges" element={<Badges />} />
             <Route path="/badges/:username" element={<Badges />} />
 
-            <Route path="/chief-panel" element={<ClanChiefRoute><ClanChiefPanel /></ClanChiefRoute>} />
-            
-            {/* New Features */}
-            <Route path="/resources" element={<Resources />} />
-            <Route path="/pending-assignment" element={<PendingAssignment />} />
-          </Route>
+              <Route path="/chief-panel" element={<ClanChiefRoute><ClanChiefPanel /></ClanChiefRoute>} />
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-      <Analytics />
-      <SpeedInsights />
-    </div>
+              {/* New Features */}
+              <Route path="/resources" element={<Resources />} />
+              <Route path="/pending-assignment" element={<PendingAssignment />} />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+        <Analytics />
+        <SpeedInsights />
+      </div>
+    </MotionConfig>
   );
 }
 

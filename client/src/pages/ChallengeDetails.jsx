@@ -19,10 +19,7 @@ import {
   FiClipboard,
   FiRefreshCw,
   FiTrash2,
-  FiGithub,
   FiCode,
-  FiFileText,
-  FiClock,
   FiChevronLeft,
   FiSend,
   FiExternalLink,
@@ -31,8 +28,6 @@ import {
   FiMessageSquare,
   FiUser,
   FiPlay,
-  FiChevronDown,
-  FiChevronUp,
   FiMaximize2,
   FiMinimize2,
   FiInfo,
@@ -46,90 +41,21 @@ import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../constants/languages";
 
 // Local Project Imports
 import SkeletonCard from "../components/SkeletonCard";
+import ProblemPanel from "../components/challenge/ProblemPanel";
+import TestResultPanel from "../components/challenge/TestResultPanel";
 import { api } from "../lib/api";
-import { MANUAL_TOPICS } from "../constants/manualContent";
+import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
 import FeedbackDialog from "../components/FeedbackDialog";
+import { getDifficultyRGB } from "../constants/difficulty";
 
 import { useAuth } from "../context/useAuth";
-
-/**
- * Normalize output for comparison:
- * 1. Trim leading/trailing whitespace
- * 2. Collapse all internal whitespace
- * 3. Normalize cross-language literals (Python's True/False/None → true/false/null)
- */
-const LANG_LITERALS = { True: "true", False: "false", None: "null" };
-const normalizeOutput = (s) =>
-  (s ?? "")
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/\b(True|False|None)\b/g, (m) => LANG_LITERALS[m]);
-
-/**
- * Converts a single test-case arg value to its stdin representation.
- * Arrays → length on first line, then space-separated elements.
- * Nested arrays → row count, then each inner array as "length elements..."
- * This matches the standard competitive-programming format expected by
- * Java's Scanner and C++ cin.
- */
-const formatArgForStdin = (a) => {
-  if (a == null) return "";
-  if (typeof a === "string") return a;
-  if (typeof a === "number" || typeof a === "boolean") return String(a);
-  if (Array.isArray(a)) {
-    if (a.length > 0 && Array.isArray(a[0])) {
-      // 2-D array: row count, then each inner row as "length el1 el2..."
-      const rows = a.map((inner) =>
-        Array.isArray(inner)
-          ? `${inner.length}\n${inner.join(" ")}`
-          : String(inner),
-      );
-      return `${a.length}\n${rows.join("\n")}`;
-    }
-    // 1-D array: length on first line, elements on second
-    return `${a.length}\n${a.join(" ")}`;
-  }
-  return JSON.stringify(a);
-};
-
-/**
- * Converts a test-case's `args` field (which may be an array, a single
- * number, a string, etc.) to a multi-line stdin string.
- */
-const argsToStdin = (args) => {
-  if (args == null) return "";
-  const list = Array.isArray(args) ? args : [args];
-  return list.map(formatArgForStdin).join("\n");
-};
-
-const b64Encode = (str) =>
-  btoa(
-    encodeURIComponent(str).replace(/%([0-9A-F]{2})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16)),
-    ),
-  );
-const b64Decode = (str) => {
-  if (!str) return "";
-  try {
-    return decodeURIComponent(
-      atob(str)
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join(""),
-    );
-  } catch {
-    return str;
-  }
-};
-
-// Default full-program stubs (used when challenge has no codeSnippets stored).
-const defaultStarterByLanguage = {
-  javascript: `function solution() {\n    // read input, compute, print output\n}\n\nsolution();\n`,
-  python: `import sys\ninput = sys.stdin.readline\n\ndef solution():\n    pass\n\nsolution()\n`,
-  java: `import java.util.*;\nimport java.util.stream.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        \n    }\n}\n`,
-  cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    \n    return 0;\n}\n`,
-  c: `#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    \n    return 0;\n}\n`,
-};
+import {
+  argsToStdin,
+  b64Encode,
+  b64Decode,
+  outputsMatch,
+  defaultStarterByLanguage,
+} from "../lib/challengeOutput";
 
 const ChallengeDetails = () => {
   const { id } = useParams();
@@ -140,7 +66,7 @@ const ChallengeDetails = () => {
   const { user } = useAuth();
   const draftKey = `challenge-draft:${id}`;
 
-  const isReviewer = ["admin", "super-admin", "clan-chief"].includes(
+  const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(
     user?.role,
   );
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
@@ -150,6 +76,7 @@ const ChallengeDetails = () => {
   const [language, setLanguage] = useState(
     user?.preferredLanguage || "javascript",
   );
+  const [solutionLanguage, setSolutionLanguage] = useState("javascript");
   const [submitting, setSubmitting] = useState(false);
   const [leftTab, setLeftTab] = useState("description");
 
@@ -306,6 +233,7 @@ const ChallengeDetails = () => {
 
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
+    staleTime: 60_000,
     queryFn: async () => {
       try {
         const res = await api.get(`/api/challenges/${id}`);
@@ -363,9 +291,17 @@ const ChallengeDetails = () => {
     },
   });
 
-  // Prefer user's saved edits, then the generic full-program template.
-  const codeSnippet =
-    codeByLang[language] ?? defaultStarterByLanguage[language] ?? "";
+  // Prefer user's saved edits, then the LeetCode snippet if available, then the generic template.
+  const starterCode = useMemo(() => {
+    const challenge = challengeQuery.data;
+    if (challenge?.codeSnippets) {
+      const match = challenge.codeSnippets.find((s) => s.langSlug === language);
+      if (match) return match.code;
+    }
+    return defaultStarterByLanguage[language] ?? "";
+  }, [challengeQuery.data, language]);
+
+  const codeSnippet = codeByLang[language] ?? starterCode;
 
   useEffect(() => {
     setShowSubmitAnyway(false);
@@ -433,22 +369,30 @@ const ChallengeDetails = () => {
 
   // --- JUDGE0 RUN LOGIC ---
   const runTestCases = async (signal) => {
-    const testCases = challengeQuery.data?.testCases ?? [];
+    const challenge = challengeQuery.data;
+    const testCases = challenge?.testCases ?? [];
+    const hasFunction = !!challenge?.functionName;
+    const isSupportedDriver = language === "python" || language === "javascript"
+      || isDrivableSignature(language, challenge?.params, challenge?.returnType);
 
     const runs =
       testCases.length > 0
         ? testCases.map((tc) => ({
             label: tc.label,
-            stdinValue: argsToStdin(tc.args),
+            stdinValue: (hasFunction && isSupportedDriver) ? argsToJsonStdin(tc.args) : argsToStdin(tc.args),
             expected: tc.expected ?? null,
           }))
         : [{ label: "Run", stdinValue: stdin, expected: null }];
 
     const langId = LANGUAGE_MAP[language]?.id ?? 63;
     const commentChar = language === "python" ? "#" : "//";
+    const finalSourceCode = (hasFunction && isSupportedDriver)
+      ? wrapWithDriver(codeSnippet, language, challenge.functionName, challenge.params, challenge.returnType)
+      : codeSnippet;
+
     const freshSource = (idx) =>
       b64Encode(
-        `${codeSnippet}\n${commentChar} run:${idx}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        `${finalSourceCode}\n${commentChar} run:${idx}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
 
     const batchRes = await api.post(
@@ -601,11 +545,11 @@ const ChallengeDetails = () => {
     try {
       const results = await runTestCases();
       const hasError = results.some((c) => c.compile_output || c.stderr);
+      const orderIndependent = challengeQuery.data?.orderIndependent;
       const allPassed =
         !hasError &&
         results.every(
-          (c) =>
-            c.expected != null && normalizeOutput(c.stdout) === normalizeOutput(c.expected),
+          (c) => c.expected != null && outputsMatch(c.stdout, c.expected, orderIndependent),
         );
 
       if (allPassed) {
@@ -623,14 +567,37 @@ const ChallengeDetails = () => {
     }
   };
 
+  const challenge = challengeQuery.data;
+  const solutionEntries = useMemo(
+    () => (challenge?.solutions || []).filter((solution) => solution.code?.trim()),
+    [challenge],
+  );
+
+  useEffect(() => {
+    if (solutionEntries.length === 0) return;
+    if (solutionEntries.some((solution) => solution.langSlug === solutionLanguage)) return;
+
+    const matchingEditorLanguage = solutionEntries.find(
+      (solution) => solution.langSlug === language,
+    );
+    setSolutionLanguage(
+      matchingEditorLanguage?.langSlug || solutionEntries[0].langSlug || "javascript",
+    );
+  }, [language, solutionEntries, solutionLanguage]);
+
+  const selectedSolution = useMemo(
+    () => solutionEntries.find((solution) => solution.langSlug === solutionLanguage),
+    [solutionEntries, solutionLanguage],
+  );
+
   // Sanitize the HTML description
   const sanitizedDescription = useMemo(() => {
-    const raw = challengeQuery.data?.description || "";
+    const raw = challenge?.description || "";
     return DOMPurify.sanitize(raw, {
       ADD_TAGS: ["img"],
       ADD_ATTR: ["target"],
     });
-  }, [challengeQuery.data?.description]);
+  }, [challenge?.description]);
 
   if (challengeQuery.isLoading)
     return (
@@ -652,24 +619,61 @@ const ChallengeDetails = () => {
       </div>
     );
 
-  const challenge = challengeQuery.data;
-  const difficultyColor =
-    challenge.difficulty === "Easy"
-      ? "text-green-400"
-      : challenge.difficulty === "Medium"
-        ? "text-yellow-400"
-        : "text-red-400";
-  const difficultyBg =
-    challenge.difficulty === "Easy"
-      ? "bg-green-500/15"
-      : challenge.difficulty === "Medium"
-        ? "bg-yellow-500/15"
-        : "bg-red-500/15";
+  const diffRgb = getDifficultyRGB(challenge.difficulty);
+  const statusChip = isReviewMode
+    ? reviewQuery.data?.status
+    : isSolved
+      ? "Solved"
+      : null;
+
+  const renderRunButton = (extra = "") => (
+    <button
+      onClick={handleRun}
+      disabled={running || cooldown}
+      className={`items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-60 border border-subtle hover:bg-white/5 text-primary ${extra}`}
+    >
+      {running ? (
+        <FiRefreshCw size={11} className="animate-spin" />
+      ) : (
+        <FiPlay size={11} className="text-green-400" />
+      )}
+      {running ? "Running…" : "Run"}
+    </button>
+  );
+
+  const renderSubmitButton = (extra = "") => {
+    if (isReviewMode) return null;
+    return showSubmitAnyway ? (
+      <button
+        onClick={() => setShowFeedbackModal(true)}
+        disabled={submitting}
+        className={`items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-bold transition-all disabled:opacity-60 bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/20 ${extra}`}
+      >
+        <FiAlertTriangle size={11} className="text-white animate-pulse" />
+        Submit Anyway
+      </button>
+    ) : (
+      <button
+        onClick={handleSubmit}
+        disabled={submitting}
+        className={`items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-bold transition-all disabled:opacity-60 ${
+          isSolved ? "bg-amber-600 hover:bg-amber-500" : "bg-green-600 hover:bg-green-500"
+        } ${extra}`}
+      >
+        {submitting ? (
+          <FiRefreshCw size={11} className="animate-spin" />
+        ) : (
+          <FiSend size={11} />
+        )}
+        {submitting ? "Submitting…" : isSolved ? "Re-submit (No XP)" : "Submit"}
+      </button>
+    );
+  };
 
   return (
-    <div className="flex flex-col w-full challenge-details-theme min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)]">
+    <div className="flex flex-col w-full min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)]">
       {/* Header */}
-      <div className="flex items-center gap-3 pb-1 border-b border-black/10 dark:border-white/10 mb-1.5 shrink-0 px-3 pt-1.5">
+      <div className="flex items-center gap-3 pb-1 border-b border-subtle mb-1.5 shrink-0 px-3 pt-1.5 sticky top-16 z-30 surface-overlay">
         <Link
           to={isReviewMode ? "/chief-panel?tab=review" : "/dashboard"}
           className="flex items-center gap-1 text-secondary hover:text-primary transition-colors text-xs"
@@ -705,156 +709,58 @@ const ChallengeDetails = () => {
               </span>
             )}
           <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${difficultyBg} ${difficultyColor}`}
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+            style={{ color: `rgb(${diffRgb})`, backgroundColor: `rgba(${diffRgb}, 0.15)` }}
           >
             {challenge.difficulty}
           </span>
           <span className="text-secondary text-xs hidden sm:inline">
             {challenge.points} XP
           </span>
-        </div>
-      </div>
-
-      {/* Mobile Tab Switcher */}
-      <div className="flex lg:hidden mb-2 px-2 shrink-0">
-        <div className="flex w-full bg-black/10 dark:bg-white/10 rounded-lg p-1 gap-1">
-          <button
-            className={`flex-1 py-2.5 text-xs font-bold rounded-md transition-all ${mobileTab === 'description' ? 'bg-accent text-white shadow-lg' : 'text-secondary hover:text-primary'}`}
-            onClick={() => setMobileTab('description')}
-          >
-            Mission Details
-          </button>
-          <button
-            className={`flex-1 py-2.5 text-xs font-bold rounded-md transition-all ${mobileTab === 'editor' ? 'bg-accent text-white shadow-lg' : 'text-secondary hover:text-primary'}`}
-            onClick={() => setMobileTab('editor')}
-          >
-            Code Editor
-          </button>
+          {statusChip && (
+            <span
+              className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                statusChip === "Accepted" || statusChip === "Solved"
+                  ? "bg-green-500/15 text-green-500"
+                  : statusChip === "Rejected"
+                    ? "bg-red-500/15 text-red-500"
+                    : "bg-yellow-500/15 text-yellow-500"
+              }`}
+            >
+              {statusChip}
+            </span>
+          )}
+          {renderSubmitButton("hidden lg:inline-flex")}
         </div>
       </div>
 
       {/* Main Split Layout */}
       <div
         ref={containerRef}
-        className="flex flex-col lg:flex-row flex-1 min-h-0 w-full relative h-full px-1 pb-1"
+        className="flex flex-col lg:flex-row flex-1 min-h-0 w-full relative h-full px-1 pb-20 lg:pb-1"
         style={{
           "--left-width": `${leftWidth}%`,
           "--right-width": `calc(${100 - leftWidth}% - 12px)`,
         }}
       >
         {/* LEFT PANEL */}
-        <div
-          className={`flex-1 lg:flex-none flex-col min-h-0 macos-glass rounded-xl overflow-hidden w-full lg:w-[var(--left-width)] lg:mb-0 mb-3 h-full panel-slide-left ${isMaximized ? "hidden" : ""} ${mobileTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}
-        >
-          <div className="flex border-b border-black/10 dark:border-white/10 shrink-0">
-            <button
-              className={`px-4 py-3 text-sm font-semibold relative ${leftTab === "description" ? "text-primary" : "text-secondary"}`}
-              onClick={() => setLeftTab("description")}
-            >
-              <FiFileText className="inline mr-2" />
-              Description
-              {leftTab === "description" && (
-                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />
-              )}
-            </button>
-            <button
-              className={`px-4 py-3 text-sm font-semibold relative ${leftTab === "submissions" ? "text-primary" : "text-secondary"}`}
-              onClick={() => setLeftTab("submissions")}
-            >
-              <FiClock className="inline mr-2" />
-              Submissions
-              {leftTab === "submissions" && (
-                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />
-              )}
-            </button>
-            {leftTab === "manual" && (
-              <button
-                className="px-4 py-3 text-sm font-semibold relative text-primary flex items-center ml-auto"
-                onClick={handleCloseManual}
-                title="Close Reference"
-              >
-                <FiXCircle size={16} className="mr-1" /> Close
-                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full" />
-              </button>
-            )}
-          </div>
-          <div className="flex-1 overflow-y-auto p-5">
-            {leftTab === "description" ? (
-              <div
-                className="leetcode-description"
-                dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
-              />
-            ) : leftTab === "submissions" ? (
-              <div className="space-y-3">
-                {historyQuery.data?.map((sub) => (
-                  <Link
-                    key={sub._id}
-                    to={`/submission/${sub._id}`}
-                    className="flex items-center justify-between p-3 rounded-xl border border-black/10 dark:border-white/10 hover:border-accent hover:scale-[99%] transition-all"
-                  >
-                    <div>
-                      <p
-                        className={`text-sm font-semibold ${sub.status === "Accepted" ? "text-green-400" : "text-red-400"}`}
-                      >
-                        {sub.status}
-                      </p>
-                      <p className="text-secondary text-xs">
-                        {new Date(sub.submittedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className="text-xs bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded text-secondary">
-                      {sub.language}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : leftTab === "manual" ? (
-              <div className="flex flex-col h-full space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {MANUAL_TOPICS.map(topic => (
-                    <button
-                      key={topic.key}
-                      onClick={() => setManualTopic(topic.key)}
-                      className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${manualTopic === topic.key ? "bg-accent border-accent text-white" : "border-black/10 dark:border-white/10 text-secondary hover:text-primary hover:border-black/30 dark:hover:border-white/30"}`}
-                    >
-                      {topic.title}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex-1 bg-black/5 dark:bg-black/40 rounded-xl border border-black/10 dark:border-white/5 flex flex-col min-h-0 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-black/10 dark:border-white/5 flex items-center justify-between shrink-0 bg-black/5 dark:bg-white/5">
-                    <span className="text-sm font-bold text-primary">
-                      {MANUAL_TOPICS.find(t => t.key === manualTopic)?.title} ({LANGUAGE_OPTIONS.find(o => o.key === language)?.label})
-                    </span>
-                    <button
-                       onClick={async () => {
-                         const snippet = MANUAL_TOPICS.find(t => t.key === manualTopic)?.snippets[language];
-                         if(snippet) {
-                            await navigator.clipboard.writeText(snippet);
-                            toast.success("Snippet copied");
-                         } else {
-                            toast.error("No snippet to copy");
-                         }
-                       }}
-                       className="p-1.5 text-secondary hover:text-primary transition-colors bg-white/5 rounded-md hover:bg-white/10"
-                       title="Copy to clipboard"
-                    >
-                      <FiClipboard size={14} />
-                    </button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <CodeEditor
-                      value={MANUAL_TOPICS.find(t => t.key === manualTopic)?.snippets[language] || "// No implementation provided for this language."}
-                      language={LANGUAGE_MAP[language]?.monacoLang ?? language}
-                      isDark={isDark}
-                      readOnly={true}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <ProblemPanel
+          isMaximized={isMaximized}
+          mobileTab={mobileTab}
+          leftTab={leftTab}
+          setLeftTab={setLeftTab}
+          handleCloseManual={handleCloseManual}
+          sanitizedDescription={sanitizedDescription}
+          historyData={historyQuery.data}
+          solutionEntries={solutionEntries}
+          solutionLanguage={solutionLanguage}
+          setSolutionLanguage={setSolutionLanguage}
+          selectedSolution={selectedSolution}
+          isDark={isDark}
+          manualTopic={manualTopic}
+          setManualTopic={setManualTopic}
+          language={language}
+        />
 
         {/* Resizer */}
         <div
@@ -880,7 +786,7 @@ const ChallengeDetails = () => {
                   <SelectContent>
                     {LANGUAGE_OPTIONS.map((opt) => (
                       <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                        {opt.label}
+                        {opt.label}{opt.version && ` (${opt.version})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -954,313 +860,27 @@ const ChallengeDetails = () => {
           </div>
 
           {/* ── Test / Result Panel ── */}
-          <div
-            className="relative flex flex-col border-t border-black/10 dark:border-white/10 shrink-0"
-            style={{ height: bottomCollapsed ? "auto" : `${bottomHeight}px` }}
-          >
-            {/* Drag handle to resize the panel (and grow the editor) */}
-            {!bottomCollapsed && (
-              <div
-                onMouseDown={handleBottomResize}
-                className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize flex justify-center items-center group z-10"
-                title="Drag to resize"
-              >
-                <div className="w-16 h-1 bg-white/15 group-hover:bg-accent rounded-full transition-colors" />
-              </div>
-            )}
-            {/* Console header */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-black/10 dark:border-white/10 shrink-0">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => updateBottomCollapsed((c) => !c)}
-                  className="flex items-center gap-1 text-xs font-semibold text-secondary hover:text-primary transition-colors px-2 py-1 rounded hover:bg-white/5"
-                >
-                  {bottomCollapsed ? (
-                    <FiChevronUp size={13} />
-                  ) : (
-                    <FiChevronDown size={13} />
-                  )}
-                  Console
-                </button>
-                {[
-                  { key: "input", label: "Testcase" },
-                  { key: "output", label: "Test Result" },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setBottomTab(key);
-                      updateBottomCollapsed(false);
-                    }}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                      !bottomCollapsed && bottomTab === key
-                        ? "text-primary"
-                        : "text-secondary hover:text-primary"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleRun}
-                  disabled={running || cooldown}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-60 border border-black/10 dark:border-white/10 hover:bg-white/5 text-primary"
-                >
-                  {running ? (
-                    <FiRefreshCw size={11} className="animate-spin" />
-                  ) : (
-                    <FiPlay size={11} className="text-green-400" />
-                  )}
-                  {running ? "Running…" : "Run"}
-                </button>
-                {!isReviewMode && (
-                  <>
-                    {showSubmitAnyway ? (
-                      <button
-                        onClick={() => setShowFeedbackModal(true)}
-                        disabled={submitting}
-                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-bold transition-all disabled:opacity-60 bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/20"
-                      >
-                        <FiAlertTriangle size={11} className="text-white animate-pulse" />
-                        Submit Anyway
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-bold transition-all disabled:opacity-60 ${
-                          isSolved ? "bg-amber-600 hover:bg-amber-500" : "bg-green-600 hover:bg-green-500"
-                        }`}
-                      >
-                        {submitting ? (
-                          <FiRefreshCw size={11} className="animate-spin" />
-                        ) : (
-                          <FiSend size={11} />
-                        )}
-                        {submitting ? "Submitting…" : isSolved ? "Re-submit (No XP)" : "Submit"}
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Panel body */}
-            {!bottomCollapsed && (
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {bottomTab === "input" ? (
-                  /* ── Test tab ── */
-                  <div className="h-full flex flex-col px-3 py-2 gap-2 overflow-y-auto">
-                    {challenge.testCases?.length > 0 ? (
-                      <>
-                        {/* Case selector */}
-                        <div className="flex gap-1 flex-wrap shrink-0">
-                          {challenge.testCases.map((tc, i) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                setSelectedCaseIdx(i);
-                                setStdin(argsToStdin(tc.args));
-                              }}
-                              className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-colors ${
-                                selectedCaseIdx === i
-                                  ? "bg-accent/20 text-accent"
-                                  : "text-secondary hover:text-primary bg-black/5 dark:bg-white/5"
-                              }`}
-                            >
-                              {tc.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Selected case: input + expected side-by-side */}
-                        {(() => {
-                          const tc = challenge.testCases[selectedCaseIdx];
-                          if (!tc) return null;
-                          const inputStr = argsToStdin(tc.args);
-                          return (
-                            <div className="flex gap-2 shrink-0">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                                  Input
-                                </p>
-                                <pre className="text-xs font-mono bg-black/10 dark:bg-white/10 rounded px-2 py-1.5 text-primary whitespace-pre-wrap break-all">
-                                  {inputStr || "(empty)"}
-                                </pre>
-                              </div>
-                              {tc.expected && (
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                                    Expected
-                                  </p>
-                                  <pre className="text-xs font-mono bg-black/10 dark:bg-white/10 rounded px-2 py-1.5 text-primary whitespace-pre-wrap break-all">
-                                    {tc.expected}
-                                  </pre>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-
-                        {/* Editable stdin for custom runs */}
-                        <div className="shrink-0">
-                          <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                            Custom stdin
-                          </p>
-                          <textarea
-                            className="w-full resize-none bg-black/5 dark:bg-white/5 rounded-md px-2 py-1.5 text-xs font-mono text-primary placeholder:text-secondary/40 focus:outline-none"
-                            rows={2}
-                            placeholder="Override stdin for a custom run…"
-                            value={stdin}
-                            onChange={(e) => setStdin(e.target.value)}
-                            spellCheck={false}
-                          />
-                        </div>
-                        {/* GitHub repo URL (optional) — only for normal (non-review) submissions */}
-                        {!isReviewMode && (
-                          <div className="shrink-0 pt-2 border-t border-black/10 dark:border-white/10">
-                            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-black/5 dark:bg-white/5 focus-within:ring-1 ring-accent/40 transition-all">
-                              <FiGithub
-                                size={13}
-                                className="text-secondary shrink-0"
-                              />
-                              <input
-                                name="submissionRepositoryUrl"
-                                type="url"
-                                placeholder="GitHub repo URL (optional)"
-                                className="bg-transparent text-xs text-primary placeholder-white/25 focus:outline-none w-full"
-                                value={repoUrl}
-                                onChange={(e) => setRepoUrl(e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <textarea
-                        className="flex-1 resize-none bg-black/5 dark:bg-white/5 rounded-md px-2 py-1.5 text-xs font-mono text-primary placeholder:text-secondary/40 focus:outline-none"
-                        placeholder="Enter stdin input here…"
-                        value={stdin}
-                        onChange={(e) => setStdin(e.target.value)}
-                        spellCheck={false}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  /* ── Result tab ── */
-                  <div className="h-full overflow-y-auto px-3 py-2 space-y-2">
-                    {!runOutput ? (
-                      <p className="text-secondary/40 text-xs font-mono">
-                        Press Run to see output here…
-                      </p>
-                    ) : runOutput.error ? (
-                      <pre className="text-red-400 text-xs font-mono whitespace-pre-wrap">
-                        {runOutput.error}
-                      </pre>
-                    ) : (
-                      <div className="space-y-3">
-                        {runOutput.cases.map((c, i) => {
-                          const hasError = c.compile_output || c.stderr;
-                          const passed =
-                            !hasError &&
-                            c.expected != null &&
-                            normalizeOutput(c.stdout) === normalizeOutput(c.expected);
-                          const failed =
-                            !hasError &&
-                            c.expected != null &&
-                            normalizeOutput(c.stdout) !== normalizeOutput(c.expected);
-                          return (
-                            <div
-                              key={i}
-                              className={`rounded-lg border px-3 py-2 space-y-2 ${
-                                hasError
-                                  ? "border-red-500/30 bg-red-500/5"
-                                  : passed
-                                    ? "border-green-500/30 bg-green-500/5"
-                                    : failed
-                                      ? "border-red-500/20 bg-black/5 dark:bg-white/5"
-                                      : "border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5"
-                              }`}
-                            >
-                              {/* Case header */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-primary">
-                                  {c.label}
-                                </span>
-                                {hasError ? (
-                                  <span className="text-[10px] font-bold text-red-400">
-                                    {c.compile_output
-                                      ? "Compile Error"
-                                      : "Runtime Error"}
-                                  </span>
-                                ) : passed ? (
-                                  <span className="flex items-center gap-1 text-[10px] font-bold text-green-400">
-                                    <FiCheck size={10} /> Passed
-                                  </span>
-                                ) : failed ? (
-                                  <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
-                                    <FiXCircle size={10} /> Wrong Answer
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              {/* Error body */}
-                              {hasError && (
-                                <pre className="text-[11px] font-mono text-red-400 whitespace-pre-wrap break-all">
-                                  {c.compile_output || c.stderr}
-                                </pre>
-                              )}
-
-                              {/* Output */}
-                              {!hasError && (
-                                <>
-                                  {c.stdinValue != null && (
-                                    <div>
-                                      <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                                        Input (stdin)
-                                      </p>
-                                      <pre className="text-xs font-mono bg-black/10 dark:bg-white/10 rounded px-2 py-1 text-primary whitespace-pre-wrap break-all">
-                                        {c.stdinValue || "(empty)"}
-                                      </pre>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                                      Output
-                                    </p>
-                                    <pre className="text-xs font-mono bg-black/10 dark:bg-white/10 rounded px-2 py-1 text-primary whitespace-pre-wrap break-all">
-                                      {c.stdout || "(no output)"}
-                                    </pre>
-                                  </div>
-                                  {c.expected != null && (
-                                    <div>
-                                      <p className="text-[10px] text-secondary uppercase tracking-wider mb-0.5">
-                                        Expected
-                                      </p>
-                                      <pre className="text-xs font-mono bg-black/10 dark:bg-white/10 rounded px-2 py-1 text-primary whitespace-pre-wrap break-all">
-                                        {c.expected}
-                                      </pre>
-                                    </div>
-                                  )}
-                                  {c.time && (
-                                    <p className="text-[10px] text-secondary font-mono">
-                                      {c.time}s · {c.memory} KB
-                                    </p>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <TestResultPanel
+            bottomCollapsed={bottomCollapsed}
+            bottomHeight={bottomHeight}
+            handleBottomResize={handleBottomResize}
+            updateBottomCollapsed={updateBottomCollapsed}
+            bottomTab={bottomTab}
+            setBottomTab={setBottomTab}
+            handleRun={handleRun}
+            running={running}
+            cooldown={cooldown}
+            isReviewMode={isReviewMode}
+            challenge={challenge}
+            selectedCaseIdx={selectedCaseIdx}
+            setSelectedCaseIdx={setSelectedCaseIdx}
+            language={language}
+            stdin={stdin}
+            setStdin={setStdin}
+            repoUrl={repoUrl}
+            setRepoUrl={setRepoUrl}
+            runOutput={runOutput}
+          />
 
           {isReviewMode ? (
             /* ---- REVIEW MODE PANEL ---- */
@@ -1365,6 +985,30 @@ const ChallengeDetails = () => {
           ) : null}
         </div>
       </div>
+
+      {/* Mobile action bar */}
+      <div
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 surface-overlay border-t border-subtle px-4 py-3 flex items-center gap-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex bg-black/10 dark:bg-white/10 rounded-lg p-1 gap-1 shrink-0">
+          <button
+            className={`px-3 py-2 text-xs font-bold rounded-md transition-all ${mobileTab === "description" ? "bg-accent text-white shadow-lg" : "text-secondary hover:text-primary"}`}
+            onClick={() => setMobileTab("description")}
+          >
+            Problem
+          </button>
+          <button
+            className={`px-3 py-2 text-xs font-bold rounded-md transition-all ${mobileTab === "editor" ? "bg-accent text-white shadow-lg" : "text-secondary hover:text-primary"}`}
+            onClick={() => setMobileTab("editor")}
+          >
+            Code
+          </button>
+        </div>
+        {renderRunButton("flex flex-1")}
+        {renderSubmitButton("flex flex-1")}
+      </div>
+
       <FeedbackDialog
         open={showFeedbackModal}
         onClose={() => setShowFeedbackModal(false)}
