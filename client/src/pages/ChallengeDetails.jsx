@@ -337,9 +337,18 @@ const ChallengeDetails = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["chief-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-      // Return to the Review Submissions tab (not history back — the chief panel
-      // switches tabs via local state, so navigate(-1) lands on the default tab).
-      navigate("/chief-panel?tab=review");
+      if (status === "Pending") {
+        // Revoke: stay on this submission so it re-renders with the reverted status.
+        queryClient.invalidateQueries({ queryKey: ["review-submission", reviewSubmissionId] });
+      } else if (queueNav.next) {
+        // Auto-advance to the next submission in the queue.
+        navigate(buildReviewUrl(queueNav.next, queueParam));
+      } else {
+        // Queue exhausted (or no queue) — return to the Review Submissions tab.
+        // Not history back — the chief panel switches tabs via local state, so
+        // navigate(-1) can land on the default tab instead.
+        navigate("/chief-panel?tab=review");
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to grade submission");
     } finally {
