@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiUsers, FiShield, FiActivity, FiCode, FiPercent, FiClock,
@@ -19,7 +19,10 @@ import MembersTab from './admin/MembersTab';
 import ReviewTab from './admin/ReviewTab';
 
 const AdminPanel = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [searchParams] = useSearchParams();
+  const validTabs = ['dashboard', 'review', 'sets', 'clans', 'resources', 'members'];
+  const initialTab = validTabs.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'dashboard';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [initialClanFilter, setInitialClanFilter] = useState('');
 
   const tabs = [
