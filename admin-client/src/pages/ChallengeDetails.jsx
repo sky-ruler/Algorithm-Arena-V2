@@ -9,6 +9,7 @@ import {
   FiCode,
   FiFileText,
   FiChevronLeft,
+  FiChevronRight,
   FiExternalLink,
   FiCheck,
   FiXCircle,
@@ -26,6 +27,7 @@ import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../constants/languages";
 import SkeletonCard from "../components/SkeletonCard";
 import { api } from "../lib/api";
 import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
+import { decodeReviewQueue, getQueueNav, buildReviewUrl } from "../lib/reviewQueue";
 import { useAuth } from "../context/useAuth";
 
 import {
@@ -49,6 +51,12 @@ const ChallengeDetails = () => {
 
   const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(user?.role);
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
+  const queueParam = searchParams.get("queue") || "";
+  const reviewQueueList = useMemo(() => decodeReviewQueue(queueParam), [queueParam]);
+  const queueNav = useMemo(
+    () => getQueueNav(reviewQueueList, reviewSubmissionId),
+    [reviewQueueList, reviewSubmissionId],
+  );
 
   const [codeByLang, setCodeByLang] = useState({});
   const [language, setLanguage] = useState("javascript");
@@ -422,14 +430,41 @@ const ChallengeDetails = () => {
       {/* Header */}
       <div className="flex items-center gap-3 pb-1 border-b border-black/10 dark:border-white/10 mb-1.5 shrink-0 px-3 pt-1.5">
         <Link
-          to="/"
-          onClick={(e) => { e.preventDefault(); navigate(-1); }}
+          to={isReviewMode ? "/?tab=review" : "/"}
           className="flex items-center gap-1 text-secondary hover:text-primary transition-colors text-xs"
         >
           <FiChevronLeft size={14} />
           <span className="hidden sm:inline">{isReviewMode ? "Reviews" : "Back"}</span>
         </Link>
         <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+        {isReviewMode && queueNav.index !== -1 && (
+          <>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => queueNav.prev && navigate(buildReviewUrl(queueNav.prev, queueParam))}
+                disabled={!queueNav.prev}
+                title="Previous submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronLeft size={14} />
+              </button>
+              <span className="text-[10px] font-bold text-tertiary tabular-nums px-0.5">
+                {queueNav.index + 1}/{queueNav.total}
+              </span>
+              <button
+                type="button"
+                onClick={() => queueNav.next && navigate(buildReviewUrl(queueNav.next, queueParam))}
+                disabled={!queueNav.next}
+                title="Next submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronRight size={14} />
+              </button>
+            </div>
+            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+          </>
+        )}
         <a href={challenge.link || "#"} target="_blank" rel="noopener noreferrer">
           <h1 className="text-sm sm:text-base font-bold truncate flex flex-row items-center gap-1.5 hover:text-accent transition-colors">
             {challenge.title} <FiExternalLink size={12} />
