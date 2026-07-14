@@ -198,7 +198,7 @@ const getChallengeById = async (req, res, next) => {
 
 const createChallenge = async (req, res, next) => {
   try {
-    req.body.points = getPointsForDifficulty(req.body.difficulty);
+    req.body.points = req.body.points || getPointsForDifficulty(req.body.difficulty);
     const challenge = await Challenge.create(req.body);
 
     await logAudit({
@@ -232,7 +232,9 @@ const createChallenge = async (req, res, next) => {
 
 const updateChallenge = async (req, res, next) => {
   try {
-    if (req.body.difficulty) {
+    if (req.body.points) {
+      // keep user-supplied points
+    } else if (req.body.difficulty) {
       req.body.points = getPointsForDifficulty(req.body.difficulty);
     } else {
       delete req.body.points;
