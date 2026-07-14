@@ -50,6 +50,17 @@ public:
         return {};
     }
 };`,
+      c: `int* twoSum(int* nums, int numsSize, int target, int* returnSize) {
+    for (int i = 0; i < numsSize; i++)
+        for (int j = i + 1; j < numsSize; j++)
+            if (nums[i] + nums[j] == target) {
+                int* r = (int*)malloc(2 * sizeof(int));
+                r[0] = i; r[1] = j; *returnSize = 2;
+                return r;
+            }
+    *returnSize = 0;
+    return NULL;
+}`,
     },
   },
   moveZeroes: {
@@ -90,6 +101,61 @@ public:
             if (nums[right] != 0) swap(nums[left++], nums[right]);
     }
 };`,
+      c: `void moveZeroes(int* nums, int numsSize) {
+    int left = 0;
+    for (int right = 0; right < numsSize; right++)
+        if (nums[right] != 0) {
+            int t = nums[right]; nums[right] = nums[left]; nums[left] = t; left++;
+        }
+}`,
+    },
+  },
+  reverseStringC: {
+    functionName: "reverseString",
+    params: [{ name: "s", type: "character[]" }],
+    returnType: "void",
+    stdin: '["h","e","l","l","o"]\n',
+    expected: ["o", "l", "l", "e", "h"],
+    code: {
+      c: `void reverseString(char* s, int sSize) {
+    int i = 0, j = sSize - 1;
+    while (i < j) { char t = s[i]; s[i] = s[j]; s[j] = t; i++; j--; }
+}`,
+    },
+  },
+  isPalindromeC: {
+    functionName: "isPalindrome",
+    params: [{ name: "s", type: "string" }],
+    returnType: "boolean",
+    stdin: '"aba"\n',
+    expected: true,
+    code: {
+      c: `bool isPalindrome(char* s) {
+    int i = 0, j = (int)strlen(s) - 1;
+    while (i < j) { if (s[i] != s[j]) return false; i++; j--; }
+    return true;
+}`,
+    },
+  },
+  longestCommonPrefixC: {
+    functionName: "longestCommonPrefix",
+    params: [{ name: "strs", type: "string[]" }],
+    returnType: "string",
+    stdin: '["flower","flow","flight"]\n',
+    expected: "fl",
+    code: {
+      c: `char* longestCommonPrefix(char** strs, int strsSize) {
+    if (strsSize == 0) { char* e = (char*)malloc(1); e[0] = 0; return e; }
+    int len = (int)strlen(strs[0]);
+    for (int i = 1; i < strsSize; i++) {
+        int j = 0;
+        while (j < len && strs[i][j] == strs[0][j]) j++;
+        len = j;
+    }
+    char* out = (char*)malloc(len + 1);
+    memcpy(out, strs[0], len); out[len] = 0;
+    return out;
+}`,
     },
   },
 };
@@ -110,6 +176,11 @@ const GATE_CHECKS = [
   ["java void drivable", isDrivableSignature("java", SOLUTIONS.moveZeroes.params, "void"), true],
   ["cpp depth-2 drivable", isDrivableSignature("cpp", [{ type: "list<list<integer>>" }], "integer"), true],
   ["unknown lang not drivable", isDrivableSignature("ruby", SOLUTIONS.twoSum.params, "integer[]"), false],
+  ["c twoSum drivable", isDrivableSignature("c", [{ type: "integer[]" }, { type: "integer" }], "integer[]"), true],
+  ["c void drivable", isDrivableSignature("c", [{ type: "integer[]" }], "void"), true],
+  ["c string[] drivable", isDrivableSignature("c", [{ type: "string[]" }], "string"), true],
+  ["c depth-2 NOT drivable", isDrivableSignature("c", [{ type: "list<list<integer>>" }], "integer"), false],
+  ["java depth-2 still drivable", isDrivableSignature("java", [{ type: "list<list<integer>>" }], "integer"), true],
 ];
 
 const dir = mkdtempSync(join(tmpdir(), "driver-verify-"));
