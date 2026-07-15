@@ -9,6 +9,7 @@ import {
   FiCode,
   FiFileText,
   FiChevronLeft,
+  FiChevronRight,
   FiExternalLink,
   FiCheck,
   FiXCircle,
@@ -26,6 +27,7 @@ import { LANGUAGE_MAP, LANGUAGE_OPTIONS } from "../constants/languages";
 import SkeletonCard from "../components/SkeletonCard";
 import { api } from "../lib/api";
 import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
+import { decodeReviewQueue, getQueueNav, buildReviewUrl } from "../lib/reviewQueue";
 import { useAuth } from "../context/useAuth";
 
 import {
@@ -49,6 +51,12 @@ const ChallengeDetails = () => {
 
   const isReviewer = ["admin", "superAdmin", "super-admin", "clan-chief"].includes(user?.role);
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
+  const queueParam = searchParams.get("queue") || "";
+  const reviewQueueList = useMemo(() => decodeReviewQueue(queueParam), [queueParam]);
+  const queueNav = useMemo(
+    () => getQueueNav(reviewQueueList, reviewSubmissionId),
+    [reviewQueueList, reviewSubmissionId],
+  );
 
   const [codeByLang, setCodeByLang] = useState({});
   const [language, setLanguage] = useState("javascript");
@@ -196,6 +204,25 @@ const ChallengeDetails = () => {
     }
   }, [isReviewMode, reviewQuery.data]);
 
+  // A language is offered only if this challenge can actually run in it.
+  // Python/JS drivers are dynamic; compiled languages need a drivable signature.
+  // Manual-stdin challenges (no functionName) are never gated.
+  const isLanguageRunnable = (langKey) => {
+    const ch = challengeQuery.data;
+    if (!ch?.functionName) return true;
+    if (langKey === "python" || langKey === "javascript") return true;
+    return isDrivableSignature(langKey, ch.params, ch.returnType);
+  };
+
+  useEffect(() => {
+    if (!challengeQuery.data || isReviewMode) return;
+    if (!isLanguageRunnable(language)) {
+      const firstRunnable = LANGUAGE_OPTIONS.find((o) => isLanguageRunnable(o.key));
+      if (firstRunnable) setLanguage(firstRunnable.key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challengeQuery.data, language, isReviewMode]);
+
   const solutionEntries = useMemo(
     () => (challengeQuery.data?.solutions || []).filter((s) => s.code?.trim()),
     [challengeQuery.data],
@@ -223,7 +250,16 @@ const ChallengeDetails = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["chief-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-      navigate(-1);
+      if (status === "Pending") {
+        // Revoke: stay on this submission so it re-renders with the reverted status.
+        queryClient.invalidateQueries({ queryKey: ["review-submission", reviewSubmissionId] });
+      } else if (queueNav.next) {
+        // Auto-advance to the next submission in the queue.
+        navigate(buildReviewUrl(queueNav.next, queueParam));
+      } else {
+        // Queue exhausted (or no queue) — return to the Review Work tab.
+        navigate("/?tab=review");
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to grade submission");
     } finally {
@@ -422,14 +458,41 @@ const ChallengeDetails = () => {
       {/* Header */}
       <div className="flex items-center gap-3 pb-1 border-b border-black/10 dark:border-white/10 mb-1.5 shrink-0 px-3 pt-1.5">
         <Link
-          to="/"
-          onClick={(e) => { e.preventDefault(); navigate(-1); }}
+          to={isReviewMode ? "/?tab=review" : "/"}
           className="flex items-center gap-1 text-secondary hover:text-primary transition-colors text-xs"
         >
           <FiChevronLeft size={14} />
           <span className="hidden sm:inline">{isReviewMode ? "Reviews" : "Back"}</span>
         </Link>
         <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+        {isReviewMode && queueNav.index !== -1 && (
+          <>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => queueNav.prev && navigate(buildReviewUrl(queueNav.prev, queueParam))}
+                disabled={!queueNav.prev}
+                title="Previous submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronLeft size={14} />
+              </button>
+              <span className="text-[10px] font-bold text-tertiary tabular-nums px-0.5">
+                {queueNav.index + 1}/{queueNav.total}
+              </span>
+              <button
+                type="button"
+                onClick={() => queueNav.next && navigate(buildReviewUrl(queueNav.next, queueParam))}
+                disabled={!queueNav.next}
+                title="Next submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronRight size={14} />
+              </button>
+            </div>
+            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+          </>
+        )}
         <a href={challenge.link || "#"} target="_blank" rel="noopener noreferrer">
           <h1 className="text-sm sm:text-base font-bold truncate flex flex-row items-center gap-1.5 hover:text-accent transition-colors">
             {challenge.title} <FiExternalLink size={12} />
@@ -595,11 +658,19 @@ const ChallengeDetails = () => {
                 onChange={(e) => setLanguage(e.target.value)}
                 disabled={isReviewMode}
               >
-                {LANGUAGE_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key} className="bg-white dark:bg-[#1a1a24] text-black dark:text-white">
-                    {opt.label}{opt.version && ` (${opt.version})`}
-                  </option>
-                ))}
+                {LANGUAGE_OPTIONS.map((opt) => {
+                  const runnable = isLanguageRunnable(opt.key);
+                  return (
+                    <option
+                      key={opt.key}
+                      value={opt.key}
+                      disabled={!runnable}
+                      className="bg-white dark:bg-[#1a1a24] text-black dark:text-white"
+                    >
+                      {opt.label}{opt.version && ` (${opt.version})`}{!runnable && " — no runner"}
+                    </option>
+                  );
+                })}
               </select>
               {isReviewMode && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">

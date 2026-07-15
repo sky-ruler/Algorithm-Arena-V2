@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -7,6 +7,7 @@ import BaseCard from '../../components/BaseCard';
 import SkeletonCard from '../../components/SkeletonCard';
 import EmptyState from '../../components/EmptyState';
 import { api } from '../../lib/api';
+import { encodeReviewQueue, buildReviewUrl } from '../../lib/reviewQueue';
 
 const ReviewTab = () => {
 
@@ -36,6 +37,10 @@ const ReviewTab = () => {
 
   const submissions = submissionsQuery.data?.data || [];
   const meta = submissionsQuery.data?.meta || {};
+  const queueParam = useMemo(
+    () => encodeReviewQueue((submissionsQuery.data?.data || []).map(sub => ({ submissionId: sub._id, challengeId: sub.challengeId?._id }))),
+    [submissionsQuery.data]
+  );
 
   return (
     <div className="space-y-6">
@@ -77,7 +82,7 @@ const ReviewTab = () => {
                   <div className="flex justify-between items-start">
                     <div className="min-w-0 flex-1">
                       <Link
-                        to={`/challenge/${sub.challengeId?._id}?review=${sub._id}`}
+                        to={buildReviewUrl({ submissionId: sub._id, challengeId: sub.challengeId?._id }, queueParam)}
                         className="font-bold text-primary truncate block hover:text-accent transition-colors"
                       >
                         {sub.challengeId?.title || 'Unknown Challenge'}
@@ -103,7 +108,7 @@ const ReviewTab = () => {
                       {new Date(sub.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </span>
                     <Link
-                      to={`/challenge/${sub.challengeId?._id}?review=${sub._id}`}
+                      to={buildReviewUrl({ submissionId: sub._id, challengeId: sub.challengeId?._id }, queueParam)}
                       className="px-4 py-2 rounded-lg bg-white/5 text-primary text-xs font-bold hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2"
                     >
                       <FiEye /> Review

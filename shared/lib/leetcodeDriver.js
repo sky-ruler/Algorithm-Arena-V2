@@ -34,21 +34,28 @@ const parseType = (raw) => {
   return { base: s, depth };
 };
 
-const isSupportedType = (raw) => {
+const isSupportedType = (raw, maxDepth = 2) => {
   const { base, depth } = parseType(raw);
-  return SUPPORTED_BASES.has(base) && depth <= 2;
+  return SUPPORTED_BASES.has(base) && depth <= maxDepth;
 };
 
+// In-place problems (reverseString, moveZeroes, …) declare a void return; the
+// judge convention (matching LeetCode) is to print the mutated first argument.
+const isVoidReturn = (returnType) => parseType(returnType).base === "void";
+
 /**
- * Whether a Java/C++ driver can be generated for this signature. Requires at
- * least one argument and every param + the return type to be within Tier 1+2.
- * void / ListNode / TreeNode / unknown types fall back to raw (manual stdin).
+ * Whether a Java/C++/C driver can be generated for this signature. Requires
+ * at least one argument and every param within Tier 1+2 (C is capped at
+ * depth 1), and a return type that is either Tier 1+2 (or depth 1 for C) or
+ * void (in-place: the first argument is printed).
+ * ListNode / TreeNode / unknown types fall back to raw (manual stdin).
  */
 export const isDrivableSignature = (language, params, returnType) => {
-  if (language !== "java" && language !== "cpp") return false;
+  if (language !== "java" && language !== "cpp" && language !== "c") return false;
   if (!Array.isArray(params) || params.length === 0) return false;
-  if (!params.every((p) => isSupportedType(p?.type))) return false;
-  return isSupportedType(returnType);
+  const maxDepth = language === "c" ? 1 : 2; // C convention synthesis is 1-D only
+  if (!params.every((p) => isSupportedType(p?.type, maxDepth))) return false;
+  return isSupportedType(returnType, maxDepth) || isVoidReturn(returnType);
 };
 
 // --- C++ codegen helpers ----------------------------------------------------
@@ -240,7 +247,13 @@ const buildJavaDriver = (code, functionName) => {
             Object[] callArgs = new Object[parsed.size()];
             for (int i = 0; i < parsed.size(); i++) callArgs[i] = convert(parsed.get(i), ptypes[i]);
             Object result = target.invoke(sol, callArgs);
-            System.out.println(toJson(result));
+            // In-place (void) methods: print the mutated first argument, matching
+            // the LeetCode judge convention for problems like reverseString.
+            if (target.getReturnType() == void.class) {
+                System.out.println(toJson(callArgs.length > 0 ? callArgs[0] : null));
+            } else {
+                System.out.println(toJson(result));
+            }
         } catch (Throwable e) {
             Throwable cause = (e instanceof InvocationTargetException && e.getCause() != null) ? e.getCause() : e;
             cause.printStackTrace();
@@ -253,7 +266,7 @@ const buildJavaDriver = (code, functionName) => {
   return `${imports}${code}\n\n// --- DRIVER CODE ---\n${main}`;
 };
 
-const buildCppDriver = (code, functionName, params) => {
+const buildCppDriver = (code, functionName, params, returnType) => {
   const descriptors = params.map((p) => parseType(p.type));
   const argDecls = descriptors
     .map(
@@ -357,8 +370,14 @@ int main() {
         }
 ${argDecls}
         Solution _sol;
-        auto _result = _sol.${functionName}(${callArgs});
-        cout << toJson(_result) << "\\n";
+${
+  isVoidReturn(returnType)
+    ? `        // In-place (void) method: print the mutated first argument.
+        _sol.${functionName}(${callArgs});
+        cout << toJson(arg0) << "\\n";`
+    : `        auto _result = _sol.${functionName}(${callArgs});
+        cout << toJson(_result) << "\\n";`
+}
     } catch (const exception& e) {
         cerr << e.what() << "\\n";
         return 1;
@@ -368,8 +387,183 @@ ${argDecls}
 `;
 };
 
+// --- C codegen helpers --------------------------------------------------------
+// LeetCode's C convention: each array param carries a trailing `int <arg>Size`,
+// array returns receive a final `int* returnSize` out-param, and strings are
+// plain char* with no size. All of it is synthesized from the stored metadata.
+const C_BASE = {
+  integer:   { cType: "int",       parseScalar: "(int)_drv_parseInt()", arrParser: "_drv_parseIntArr",  printExpr: (v) => `printf("%d", ${v})` },
+  long:      { cType: "long long", parseScalar: "_drv_parseInt()",      arrParser: "_drv_parseLLArr",   printExpr: (v) => `printf("%lld", ${v})` },
+  double:    { cType: "double",    parseScalar: "_drv_parseDouble()",   arrParser: "_drv_parseDblArr",  printExpr: (v) => `printf("%g", ${v})` },
+  boolean:   { cType: "bool",      parseScalar: "_drv_parseBool()",     arrParser: "_drv_parseBoolArr", printExpr: (v) => `printf("%s", ${v} ? "true" : "false")` },
+  character: { cType: "char",      parseScalar: "_drv_parseCharVal()",  arrParser: "_drv_parseCharArr", printExpr: (v) => `_drv_printCharJson(${v})` },
+  string:    { cType: "char*",     parseScalar: "_drv_parseStr()",      arrParser: "_drv_parseStrArr",  printExpr: (v) => `_drv_printEscStr(${v})` },
+};
+
+const C_HELPERS = String.raw`static char* _J; static size_t _P;
+static void _fail(const char* msg) { fprintf(stderr, "Driver: %s\n", msg); exit(1); }
+static void _skip(void) { while (_J[_P] && isspace((unsigned char)_J[_P])) _P++; }
+static char* _dup(const char* s) {
+    size_t n = strlen(s);
+    char* out = (char*)malloc(n + 1);
+    memcpy(out, s, n + 1);
+    return out;
+}
+static long long _drv_parseInt(void) {
+    _skip();
+    size_t s = _P;
+    if (_J[_P] == '-' || _J[_P] == '+') _P++;
+    while (isdigit((unsigned char)_J[_P])) _P++;
+    return strtoll(_J + s, NULL, 10);
+}
+static double _drv_parseDouble(void) {
+    _skip();
+    size_t s = _P;
+    while (_J[_P]) {
+        char c = _J[_P];
+        if (isdigit((unsigned char)c) || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E') _P++;
+        else break;
+    }
+    return strtod(_J + s, NULL);
+}
+static bool _drv_parseBool(void) { _skip(); if (_J[_P] == 't') { _P += 4; return true; } _P += 5; return false; }
+static char* _drv_parseStr(void) {
+    _skip();
+    size_t cap = 16, len = 0;
+    char* out = (char*)malloc(cap);
+    _P++; /* opening quote */
+    while (_J[_P] && _J[_P] != '"') {
+        char c = _J[_P++];
+        if (c == '\\' && _J[_P]) {
+            char e = _J[_P++];
+            if (e == 'n') c = '\n';
+            else if (e == 't') c = '\t';
+            else if (e == 'r') c = '\r';
+            else c = e;
+        }
+        if (len + 1 >= cap) { cap *= 2; out = (char*)realloc(out, cap); }
+        out[len++] = c;
+    }
+    _P++; /* closing quote */
+    out[len] = '\0';
+    return out;
+}
+static char _drv_parseCharVal(void) { char* s = _drv_parseStr(); char c = s[0]; free(s); return c; }
+#define DEF_ARR_PARSER(NAME, T, PARSE_ELEM) \
+static T* NAME(int* n) { \
+    _skip(); _P++; _skip(); \
+    size_t cap = 8; int cnt = 0; \
+    T* a = (T*)malloc(cap * sizeof(T)); \
+    if (_J[_P] == ']') { _P++; *n = 0; return a; } \
+    while (1) { \
+        if ((size_t)cnt >= cap) { cap *= 2; a = (T*)realloc(a, cap * sizeof(T)); } \
+        a[cnt++] = PARSE_ELEM; \
+        _skip(); \
+        char c = _J[_P++]; \
+        if (c == ']') break; \
+    } \
+    *n = cnt; return a; \
+}
+DEF_ARR_PARSER(_drv_parseIntArr, int, (int)_drv_parseInt())
+DEF_ARR_PARSER(_drv_parseLLArr, long long, _drv_parseInt())
+DEF_ARR_PARSER(_drv_parseDblArr, double, _drv_parseDouble())
+DEF_ARR_PARSER(_drv_parseBoolArr, bool, _drv_parseBool())
+DEF_ARR_PARSER(_drv_parseCharArr, char, _drv_parseCharVal())
+DEF_ARR_PARSER(_drv_parseStrArr, char*, _drv_parseStr())
+static void _drv_printEscStr(const char* s) {
+    putchar('"');
+    for (size_t i = 0; s[i]; i++) {
+        char c = s[i];
+        if (c == '"') printf("\\\"");
+        else if (c == '\\') printf("\\\\");
+        else if (c == '\n') printf("\\n");
+        else if (c == '\t') printf("\\t");
+        else if (c == '\r') printf("\\r");
+        else putchar(c);
+    }
+    putchar('"');
+}
+static void _drv_printCharJson(char v) { char t[2] = { v, 0 }; _drv_printEscStr(t); }
+`;
+
+const buildCDriver = (code, functionName, params, returnType) => {
+  const descriptors = params.map((p) => parseType(p.type));
+
+  const argDecls = descriptors
+    .map((d, i) => {
+      const base = C_BASE[d.base];
+      const guard =
+        `    if (${i} >= (int)nLines) _fail("missing input line ${i}");\n` +
+        `    _J = lineBufs[${i}]; _P = 0;\n`;
+      if (d.depth === 0) return `${guard}    ${base.cType} arg${i} = ${base.parseScalar};`;
+      return `${guard}    int arg${i}Size = 0;\n    ${base.cType}* arg${i} = ${base.arrParser}(&arg${i}Size);`;
+    })
+    .join("\n");
+
+  const callArgs = descriptors
+    .flatMap((d, i) => (d.depth === 0 ? [`arg${i}`] : [`arg${i}`, `arg${i}Size`]))
+    .join(", ");
+
+  const printArrayStmt = (base, expr, sizeExpr) =>
+    `printf("[");\n` +
+    `    for (int _i = 0; _i < ${sizeExpr}; _i++) { if (_i) printf(","); ${C_BASE[base].printExpr(`${expr}[_i]`)}; }\n` +
+    `    printf("]\\n");`;
+
+  const ret = parseType(returnType);
+  let invocation;
+  if (isVoidReturn(returnType)) {
+    // In-place method: print the mutated first argument.
+    const d0 = descriptors[0];
+    const printFirst = d0.depth === 0
+      ? `${C_BASE[d0.base].printExpr("arg0")}; printf("\\n");`
+      : printArrayStmt(d0.base, "arg0", "arg0Size");
+    invocation = `    ${functionName}(${callArgs});\n    ${printFirst}`;
+  } else if (ret.depth === 0) {
+    invocation =
+      `    ${C_BASE[ret.base].cType} _result = ${functionName}(${callArgs});\n` +
+      `    ${C_BASE[ret.base].printExpr("_result")}; printf("\\n");`;
+  } else {
+    // Array return: LeetCode's C convention passes int* returnSize as the last arg.
+    invocation =
+      `    int returnSize = 0;\n` +
+      `    ${C_BASE[ret.base].cType}* _result = ${functionName}(${callArgs}, &returnSize);\n` +
+      `    ${printArrayStmt(ret.base, "_result", "returnSize")}`;
+  }
+
+  return `#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
+
+${code}
+
+// --- DRIVER CODE ---
+${C_HELPERS}
+int main(void) {
+    char* lineBufs[16];
+    size_t nLines = 0;
+    char* buf = NULL;
+    size_t bufCap = 0;
+    while (getline(&buf, &bufCap, stdin) != -1) {
+        char* p = buf;
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (!*p) continue;
+        if (nLines < 16) lineBufs[nLines++] = _dup(buf);
+    }
+${argDecls}
+${invocation}
+    return 0;
+}
+`;
+};
+
 export const wrapWithDriver = (code, language, functionName, params, returnType) => {
   if (!functionName) return code;
+
+  // In-place (void) problems: the driver prints the mutated first argument.
+  const voidReturn = isVoidReturn(returnType);
 
   if (language === "python") {
     return `from typing import *
@@ -398,7 +592,10 @@ def _run_driver():
             fn = globals()[${JSON.stringify(functionName)}]
 
         result = fn(*args)
-        print(json.dumps(result))
+        if ${voidReturn ? "True" : "False"} and args:
+            print(json.dumps(args[0]))
+        else:
+            print(json.dumps(result))
     except Exception as e:
         import traceback
         traceback.print_exc(file=sys.stderr)
@@ -421,7 +618,8 @@ if __name__ == "__main__":
     const args = lines.map(l => JSON.parse(l));
     const fn = eval(${JSON.stringify(functionName)});
     const result = fn(...args);
-    console.log(JSON.stringify(result === undefined ? null : result));
+    const out = ${voidReturn ? "(args.length > 0 ? args[0] : null)" : "(result === undefined ? null : result)"};
+    console.log(JSON.stringify(out));
   } catch (err) {
     console.error(err.stack || err);
     process.exit(1);
@@ -430,14 +628,19 @@ if __name__ == "__main__":
 `;
   }
 
-  // Java and C++ need typed drivers; only generate when the whole signature is
-  // within Tier 1+2. Otherwise fall back to running the raw code (manual stdin).
+  // Java, C++, and C need typed drivers; only generate when the whole signature
+  // is within Tier 1+2 (Tier 1 only for C). Otherwise fall back to running the
+  // raw code (manual stdin).
   if (language === "java" && isDrivableSignature(language, params, returnType)) {
     return buildJavaDriver(code, functionName);
   }
 
   if (language === "cpp" && isDrivableSignature(language, params, returnType)) {
-    return buildCppDriver(code, functionName, params);
+    return buildCppDriver(code, functionName, params, returnType);
+  }
+
+  if (language === "c" && isDrivableSignature(language, params, returnType)) {
+    return buildCDriver(code, functionName, params, returnType);
   }
 
   return code;
