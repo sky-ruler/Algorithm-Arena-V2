@@ -277,6 +277,25 @@ const ChallengeDetails = () => {
     );
   }, [draftKey, repoUrl, codeByLang, language, challengeQuery.data]);
 
+  // A language is offered only if this challenge can actually run in it.
+  // Python/JS drivers are dynamic; compiled languages need a drivable signature.
+  // Manual-stdin challenges (no functionName) are never gated.
+  const isLanguageRunnable = (langKey) => {
+    const ch = challengeQuery.data;
+    if (!ch?.functionName) return true;
+    if (langKey === "python" || langKey === "javascript") return true;
+    return isDrivableSignature(langKey, ch.params, ch.returnType);
+  };
+
+  useEffect(() => {
+    if (!challengeQuery.data || isReviewMode) return;
+    if (!isLanguageRunnable(language)) {
+      const firstRunnable = LANGUAGE_OPTIONS.find((o) => isLanguageRunnable(o.key));
+      if (firstRunnable) setLanguage(firstRunnable.key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challengeQuery.data, language, isReviewMode]);
+
   const historyQuery = useQuery({
     queryKey: ["my-submissions", id],
     enabled: !isReviewMode,
@@ -832,11 +851,19 @@ const ChallengeDetails = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {LANGUAGE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                        {opt.label}{opt.version && ` (${opt.version})`}
-                      </SelectItem>
-                    ))}
+                    {LANGUAGE_OPTIONS.map((opt) => {
+                      const runnable = isLanguageRunnable(opt.key);
+                      return (
+                        <SelectItem
+                          key={opt.key}
+                          value={opt.key}
+                          disabled={!runnable}
+                          className="text-xs"
+                        >
+                          {opt.label}{opt.version && ` (${opt.version})`}{!runnable && " — no runner"}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
