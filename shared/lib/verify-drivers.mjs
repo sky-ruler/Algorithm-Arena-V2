@@ -160,7 +160,6 @@ public:
   },
 };
 
-// Task 2 appends C solutions/cases here.
 const CASES = [];
 for (const [name, s] of Object.entries(SOLUTIONS)) {
   for (const [language, code] of Object.entries(s.code)) {

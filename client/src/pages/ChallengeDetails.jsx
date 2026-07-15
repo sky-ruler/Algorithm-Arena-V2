@@ -288,13 +288,13 @@ const ChallengeDetails = () => {
   };
 
   useEffect(() => {
-    if (!challengeQuery.data) return;
+    if (!challengeQuery.data || isReviewMode) return;
     if (!isLanguageRunnable(language)) {
       const firstRunnable = LANGUAGE_OPTIONS.find((o) => isLanguageRunnable(o.key));
       if (firstRunnable) setLanguage(firstRunnable.key);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [challengeQuery.data, language]);
+  }, [challengeQuery.data, language, isReviewMode]);
 
   const historyQuery = useQuery({
     queryKey: ["my-submissions", id],

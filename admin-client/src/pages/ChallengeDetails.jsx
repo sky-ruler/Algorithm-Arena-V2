@@ -204,6 +204,9 @@ const ChallengeDetails = () => {
     }
   }, [isReviewMode, reviewQuery.data]);
 
+  // A language is offered only if this challenge can actually run in it.
+  // Python/JS drivers are dynamic; compiled languages need a drivable signature.
+  // Manual-stdin challenges (no functionName) are never gated.
   const isLanguageRunnable = (langKey) => {
     const ch = challengeQuery.data;
     if (!ch?.functionName) return true;
