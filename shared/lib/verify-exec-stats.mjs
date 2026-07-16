@@ -43,6 +43,14 @@ check("mixed errored + successful: only successful cases count", () => {
   assert.deepEqual(computeExecStats(r), { execTimeSec: 0.03, execMemoryKb: 15000 });
 });
 
+check("case with time but missing memory is excluded, not NaN", () => {
+  const r = [
+    { time: "0.05", memory: null },
+    { time: "0.02", memory: 15000 },
+  ];
+  assert.deepEqual(computeExecStats(r), { execTimeSec: 0.02, execMemoryKb: 15000 });
+});
+
 check("string time/memory values are coerced to numbers for max", () => {
   const r = [
     { time: "0.100", memory: "20000" },

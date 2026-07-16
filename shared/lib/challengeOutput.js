@@ -191,7 +191,7 @@ export const defaultStarterByLanguage = {
  */
 export const computeExecStats = (results) => {
   const usable = (results || []).filter(
-    (c) => !c?.compile_output && !c?.stderr && c?.time != null,
+    (c) => !c?.compile_output && !c?.stderr && c?.time != null && c?.memory != null,
   );
   if (usable.length === 0) return null;
   return {
