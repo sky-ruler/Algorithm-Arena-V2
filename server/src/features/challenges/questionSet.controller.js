@@ -45,13 +45,13 @@ const createQuestionSet = async (req, res, next) => {
       req.body.title = capitalizeTitle(req.body.title);
     }
 
-    // Capitalize each individual question title and enforce difficulty-based XP
+    // Capitalize each individual question title; use submitted points or fall back to difficulty default
     if (req.body.questions && req.body.questions.length > 0) {
       req.body.questions = req.body.questions.map(q => {
         if (q.title) {
           q.title = capitalizeTitle(q.title);
         }
-        q.points = getPointsForDifficulty(q.difficulty || 'Easy');
+        q.points = q.points || getPointsForDifficulty(q.difficulty || 'Easy');
         return q;
       });
     }
@@ -72,7 +72,7 @@ const createQuestionSet = async (req, res, next) => {
         title: q.title,
         description: q.description,
         difficulty: q.difficulty || 'Easy',
-        points: getPointsForDifficulty(q.difficulty || 'Easy'),
+        points: q.points || getPointsForDifficulty(q.difficulty || 'Easy'),
         category: q.category || 'Logic',
         tags: q.tags || [],
         codeSnippets: q.codeSnippets || [],
@@ -115,7 +115,7 @@ const buildChallengePayload = (q, setId) => ({
   title: q.title,
   description: q.description || q.title || 'No description provided',
   difficulty: q.difficulty || 'Easy',
-  points: getPointsForDifficulty(q.difficulty || 'Easy'),
+  points: q.points || getPointsForDifficulty(q.difficulty || 'Easy'),
   category: q.category || 'Logic',
   tags: q.tags || [],
   codeSnippets: q.codeSnippets || [],
@@ -143,7 +143,7 @@ const updateQuestionSet = async (req, res, next) => {
       req.body.questions = req.body.questions.map((q) => ({
         ...q,
         ...(q.title ? { title: capitalizeTitle(q.title) } : {}),
-        points: getPointsForDifficulty(q.difficulty || 'Easy'),
+        points: q.points || getPointsForDifficulty(q.difficulty || 'Easy'),
       }));
     }
 

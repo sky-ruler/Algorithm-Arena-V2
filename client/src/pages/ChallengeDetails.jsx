@@ -21,6 +21,7 @@ import {
   FiTrash2,
   FiCode,
   FiChevronLeft,
+  FiChevronRight,
   FiSend,
   FiExternalLink,
   FiCheck,
@@ -45,6 +46,7 @@ import ProblemPanel from "../components/challenge/ProblemPanel";
 import TestResultPanel from "../components/challenge/TestResultPanel";
 import { api } from "../lib/api";
 import { argsToJsonStdin, wrapWithDriver, isDrivableSignature } from "../lib/leetcodeDriver";
+import { decodeReviewQueue, getQueueNav, buildReviewUrl } from "../lib/reviewQueue";
 import FeedbackDialog from "../components/FeedbackDialog";
 import { getDifficultyRGB } from "../constants/difficulty";
 
@@ -55,6 +57,8 @@ import {
   b64Decode,
   outputsMatch,
   defaultStarterByLanguage,
+  computeExecStats,
+  formatExecStats,
 } from "../lib/challengeOutput";
 
 const ChallengeDetails = () => {
@@ -70,6 +74,12 @@ const ChallengeDetails = () => {
     user?.role,
   );
   const isReviewMode = Boolean(reviewSubmissionId) && isReviewer;
+  const queueParam = searchParams.get("queue") || "";
+  const reviewQueueList = useMemo(() => decodeReviewQueue(queueParam), [queueParam]);
+  const queueNav = useMemo(
+    () => getQueueNav(reviewQueueList, reviewSubmissionId),
+    [reviewQueueList, reviewSubmissionId],
+  );
 
   const [repoUrl, setRepoUrl] = useState("");
   const [codeByLang, setCodeByLang] = useState({});
@@ -95,6 +105,7 @@ const ChallengeDetails = () => {
   // Review mode state
   const [reviewComment, setReviewComment] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const [grading, setGrading] = useState(false);
 
   // Manual state
@@ -268,6 +279,25 @@ const ChallengeDetails = () => {
     );
   }, [draftKey, repoUrl, codeByLang, language, challengeQuery.data]);
 
+  // A language is offered only if this challenge can actually run in it.
+  // Python/JS drivers are dynamic; compiled languages need a drivable signature.
+  // Manual-stdin challenges (no functionName) are never gated.
+  const isLanguageRunnable = (langKey) => {
+    const ch = challengeQuery.data;
+    if (!ch?.functionName) return true;
+    if (langKey === "python" || langKey === "javascript") return true;
+    return isDrivableSignature(langKey, ch.params, ch.returnType);
+  };
+
+  useEffect(() => {
+    if (!challengeQuery.data || isReviewMode) return;
+    if (!isLanguageRunnable(language)) {
+      const firstRunnable = LANGUAGE_OPTIONS.find((o) => isLanguageRunnable(o.key));
+      if (firstRunnable) setLanguage(firstRunnable.key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challengeQuery.data, language, isReviewMode]);
+
   const historyQuery = useQuery({
     queryKey: ["my-submissions", id],
     enabled: !isReviewMode,
@@ -329,7 +359,18 @@ const ChallengeDetails = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["chief-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-      navigate(-1);
+      if (status === "Pending") {
+        // Revoke: stay on this submission so it re-renders with the reverted status.
+        queryClient.invalidateQueries({ queryKey: ["review-submission", reviewSubmissionId] });
+      } else if (queueNav.next) {
+        // Auto-advance to the next submission in the queue.
+        navigate(buildReviewUrl(queueNav.next, queueParam));
+      } else {
+        // Queue exhausted (or no queue) — return to the Review Submissions tab.
+        // Not history back — the chief panel switches tabs via local state, so
+        // navigate(-1) can land on the default tab instead.
+        navigate("/chief-panel?tab=review");
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to grade submission");
     } finally {
@@ -502,7 +543,7 @@ const ChallengeDetails = () => {
     }
   };
 
-  const submitToServer = async (userFeedbackVal) => {
+  const submitToServer = async (userFeedbackVal, stats) => {
     setSubmitting(true);
     try {
       await api.post("/api/submissions", {
@@ -511,6 +552,7 @@ const ChallengeDetails = () => {
         code: codeSnippet.trim() || undefined,
         language,
         userFeedback: userFeedbackVal || undefined,
+        ...(stats || {}),
       });
       toast.success("Solution submitted.");
       setRepoUrl("");
@@ -551,10 +593,11 @@ const ChallengeDetails = () => {
         results.every(
           (c) => c.expected != null && outputsMatch(c.stdout, c.expected, orderIndependent),
         );
+      const stats = computeExecStats(results);
 
       if (allPassed) {
         toast.success("All test cases passed! Submitting solution...");
-        await submitToServer();
+        await submitToServer(undefined, stats);
       } else {
         setShowSubmitAnyway(true);
         toast.error("Some test cases failed. You can choose to Submit Anyway.");
@@ -682,6 +725,34 @@ const ChallengeDetails = () => {
           <span className="hidden sm:inline">{isReviewMode ? "Code Reviews" : "Missions"}</span>
         </Link>
         <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+        {isReviewMode && queueNav.index !== -1 && (
+          <>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => queueNav.prev && navigate(buildReviewUrl(queueNav.prev, queueParam))}
+                disabled={!queueNav.prev}
+                title="Previous submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronLeft size={14} />
+              </button>
+              <span className="text-[10px] font-bold text-tertiary tabular-nums px-0.5">
+                {queueNav.index + 1}/{queueNav.total}
+              </span>
+              <button
+                type="button"
+                onClick={() => queueNav.next && navigate(buildReviewUrl(queueNav.next, queueParam))}
+                disabled={!queueNav.next}
+                title="Next submission"
+                className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <FiChevronRight size={14} />
+              </button>
+            </div>
+            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+          </>
+        )}
         <a
           href={challenge.link || `https://leetcode.com/problems/${challenge.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}/`}
           target="_blank"
@@ -730,6 +801,14 @@ const ChallengeDetails = () => {
               {statusChip}
             </span>
           )}
+          {isReviewMode && reviewQuery.data && (() => {
+            const execStats = formatExecStats(reviewQuery.data.execTimeSec, reviewQuery.data.execMemoryKb);
+            return execStats ? (
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono text-secondary bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
+                ⏱ {execStats.time} · 💾 {execStats.memory}
+              </span>
+            ) : null;
+          })()}
           {renderSubmitButton("hidden lg:inline-flex")}
         </div>
       </div>
@@ -784,11 +863,19 @@ const ChallengeDetails = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {LANGUAGE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                        {opt.label}{opt.version && ` (${opt.version})`}
-                      </SelectItem>
-                    ))}
+                    {LANGUAGE_OPTIONS.map((opt) => {
+                      const runnable = isLanguageRunnable(opt.key);
+                      return (
+                        <SelectItem
+                          key={opt.key}
+                          value={opt.key}
+                          disabled={!runnable}
+                          className="text-xs"
+                        >
+                          {opt.label}{opt.version && ` (${opt.version})`}{!runnable && " — no runner"}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -981,6 +1068,38 @@ const ChallengeDetails = () => {
                   </div>
                 )}
               </div>
+
+              {reviewQuery.data?.status === "Accepted" && (
+                <div className="flex gap-2 pt-1 border-t border-black/10 dark:border-white/10">
+                  {!showRevokeConfirm ? (
+                    <button
+                      onClick={() => setShowRevokeConfirm(true)}
+                      disabled={grading}
+                      className="w-full py-2 flex items-center justify-center gap-2 rounded-xl bg-orange-500/10 text-orange-400 text-xs font-bold hover:bg-orange-500/20 transition-all disabled:opacity-50 border border-orange-500/20"
+                    >
+                      <FiRefreshCw size={13} />
+                      Revoke Acceptance
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { handleGrade("Pending"); setShowRevokeConfirm(false); }}
+                        disabled={grading}
+                        className="flex-1 py-2 flex items-center justify-center gap-2 rounded-xl bg-orange-500/15 text-orange-400 text-xs font-bold hover:bg-orange-500/25 transition-all disabled:opacity-50 border border-orange-500/30"
+                      >
+                        <FiRefreshCw size={13} />
+                        {grading ? "Processing..." : "Confirm Revoke"}
+                      </button>
+                      <button
+                        onClick={() => setShowRevokeConfirm(false)}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold text-secondary hover:text-primary bg-black/5 dark:bg-white/5 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
         </div>
