@@ -132,7 +132,7 @@ const ChiefMembersTab = ({ clan }) => {
       const status = isWarned ? 'Warned' : isInactive ? 'Inactive' : 'Active';
       
       return [
-        `"${user.name || ''}"`,
+        `"${user.name || user.username || ''}"`,
         `"${user.username || ''}"`,
         `"${user.email || ''}"`,
         `"${user.regNo || 'N/A'}"`,
