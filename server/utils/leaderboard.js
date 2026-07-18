@@ -8,109 +8,69 @@ const Submission = require('../src/features/submissions/Submission.model');
  * @param {mongoose.Types.ObjectId} userId
  * @returns {Promise<number|null>} 1-based rank, or null if no accepted submissions.
  */
+let cachedRanks = null;
+let cacheTimestamp = 0;
+
 const getUserRank = async (userId) => {
-  // Optimized: compute rankings once, then return only the target user.
-  // Assumes MongoDB 5.0+ for $setWindowFields.
+  const mongoose = require('mongoose');
+  const CACHE_TTL = process.env.NODE_ENV === 'test' ? 0 : 5 * 60 * 1000;
+  const now = Date.now();
+  const targetUserIdStr = userId.toString();
+
+  if (cachedRanks && (now - cacheTimestamp < CACHE_TTL)) {
+    return cachedRanks.get(targetUserIdStr) || null;
+  }
+
   const result = await Submission.aggregate([
-    // Only accepted submissions participate in the leaderboard
-    { $match: { status: 'Accepted', userId } },
+    { $match: { status: 'Accepted' } },
+    {
+      $group: {
+        _id: { userId: '$userId', challengeId: '$challengeId' }
+      }
+    },
     {
       $lookup: {
         from: 'challenges',
-        localField: 'challengeId',
+        localField: '_id.challengeId',
         foreignField: '_id',
         as: 'challenge',
       },
     },
     { $unwind: '$challenge' },
-    // Group only the current user to compute their points/solvedCount
     {
       $group: {
-        _id: '$userId',
-        challengePoints: { $sum: '$challenge.points' },
+        _id: '$_id.userId',
         solvedCount: { $sum: 1 },
+        totalPoints: { $sum: '$challenge.points' },
       },
     },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'user',
-      },
-    },
-    { $unwind: '$user' },
-    {
-      $addFields: {
-        totalPoints: { $ifNull: ['$user.points', 0] },
-      },
-    },
-    // Now compute the rank by comparing against everyone else with a single pass.
-    // We do this by running the full aggregation in a $facet.
-    {
-      $facet: {
-        self: [{ $limit: 1 }],
-        all: [
-          { $match: { status: 'Accepted' } },
-          {
-            $lookup: {
-              from: 'challenges',
-              localField: 'challengeId',
-              foreignField: '_id',
-              as: 'challenge',
-            },
-          },
-          { $unwind: '$challenge' },
-          {
-            $group: {
-              _id: '$userId',
-              challengePoints: { $sum: '$challenge.points' },
-              solvedCount: { $sum: 1 },
-            },
-          },
-          {
-            $lookup: {
-              from: 'users',
-              localField: '_id',
-              foreignField: '_id',
-              as: 'user',
-            },
-          },
-          { $unwind: '$user' },
-          {
-            $addFields: {
-              totalPoints: { $ifNull: ['$user.points', 0] },
-            },
-          },
-          { $sort: { totalPoints: -1, solvedCount: -1 } },
-          {
-            $setWindowFields: {
-              sortBy: { totalPoints: -1 },
-              output: { rank: { $denseRank: {} } },
-            },
-          },
-          { $project: { _id: 1, rank: 1, totalPoints: 1, solvedCount: 1 } },
-        ],
-      },
-    },
-    // Extract the self user stats
-    {
-      $project: {
-        self: { $arrayElemAt: ['$self', 0] },
-        all: 1,
-      },
-    },
-    // Match the precomputed rank row for the exact userId
-    { $unwind: '$all' },
-    {
-      $match: {
-        $expr: { $eq: ['$all._id', '$self._id'] },
-      },
-    },
-    { $project: { rank: '$all.rank' } },
+    { $sort: { totalPoints: -1, solvedCount: -1 } }
   ]);
 
-  return result.length ? result[0].rank : null;
+  const newRanks = new Map();
+  let currentRank = 1;
+  result.forEach((u, i) => {
+    let displayRank;
+    if (i < 3) {
+      displayRank = i + 1;
+      currentRank = i + 1;
+    } else {
+      const prev = result[i - 1];
+      if (u.totalPoints !== prev.totalPoints || u.solvedCount !== prev.solvedCount) {
+        currentRank++;
+      }
+      displayRank = Math.max(4, currentRank);
+      currentRank = displayRank;
+    }
+    newRanks.set(u._id.toString(), displayRank);
+  });
+
+  if (CACHE_TTL > 0 && newRanks.size <= 10000) {
+    cachedRanks = newRanks;
+    cacheTimestamp = now;
+  }
+
+  return newRanks.get(targetUserIdStr) || null;
 };
 
 module.exports = { getUserRank };

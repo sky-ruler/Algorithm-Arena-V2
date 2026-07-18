@@ -19,6 +19,7 @@ import CodeEditor from '../components/CodeEditor';
 import SkeletonCard from '../components/SkeletonCard';
 import Card from '../components/Card';
 import { api } from '../lib/api';
+import { formatExecStats } from '../lib/challengeOutput';
 
 const StatusBadge = ({ status }) => {
   const colorClass =
@@ -111,6 +112,7 @@ const SubmissionDetails = () => {
 
   const submission = submissionQuery.data;
   const hasReviewComment = submission.feedback && submission.status === 'Rejected';
+  const execStats = formatExecStats(submission.execTimeSec, submission.execMemoryKb);
 
   return (
     <div
@@ -138,6 +140,13 @@ const SubmissionDetails = () => {
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {execStats && (
+            <span className="hidden sm:inline-flex items-center gap-2 text-[11px] font-mono text-secondary bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-full">
+              <span>⏱ {execStats.time}</span>
+              <span>·</span>
+              <span>💾 {execStats.memory}</span>
+            </span>
+          )}
           <StatusBadge status={submission.status} />
         </div>
       </div>
@@ -245,6 +254,21 @@ const SubmissionDetails = () => {
             </div>
           )}
 
+          {/* User Feedback Card (Submit Anyway) */}
+          {submission.userFeedback && (
+            <div className="macos-glass rounded-xl overflow-hidden border border-accent/20">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-accent/10 bg-accent/5">
+                <FiMessageSquare className="text-accent" size={14} />
+                <span className="text-sm font-bold text-accent">User Feedback (Submitted Anyway)</span>
+              </div>
+              <div className="p-4">
+                <div className="p-3 rounded-xl bg-accent/5 border border-accent/10 text-sm text-primary leading-relaxed whitespace-pre-wrap">
+                  {submission.userFeedback}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status State Cards */}
           {submission.status === 'Pending' && (
             <div className="macos-glass rounded-xl p-6 border border-yellow-500/20 text-center space-y-3">
@@ -312,7 +336,7 @@ const SubmissionDetails = () => {
               </div>
               <Link
                 to={`/challenge/${submission.challengeId?._id || ''}`}
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold text-accent bg-accent/5 border border-black/20 dark:border-white/20 hover:bg-accent/10 transition-colors"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold text-accent bg-accent/5 border border-accent/20 hover:bg-accent/10 transition-colors"
               >
                 View Challenge <FiExternalLink size={12} />
               </Link>

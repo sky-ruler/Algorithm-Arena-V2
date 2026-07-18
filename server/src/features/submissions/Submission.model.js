@@ -20,12 +20,18 @@ const submissionSchema = new mongoose.Schema({
     default: 'Pending' 
   },
   feedback: { type: String }, // Chief feedback
-  reviewedBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User' 
+  userFeedback: { type: String }, // User feedback when submitted anyway
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   reviewedAt: { type: Date },
-  submittedAt: { type: Date, default: Date.now }
+  submittedAt: { type: Date, default: Date.now },
+  // Aggregate Judge0 stats from the test-case run that gated this submission.
+  // Native Judge0 units: seconds (decimal) and kilobytes (integer). Absent on
+  // submissions predating this field or made via repo-link only.
+  execTimeSec: { type: Number },
+  execMemoryKb: { type: Number }
 });
 
 submissionSchema.index({ userId: 1, submittedAt: -1 });

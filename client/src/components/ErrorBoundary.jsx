@@ -1,5 +1,6 @@
 import React from 'react';
-import PixelBlast from './PixelBlast';
+
+const LazyPixelBlast = React.lazy(() => import('./PixelBlast'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -21,16 +22,18 @@ class ErrorBoundary extends React.Component {
         <div className="min-h-screen bg-app text-primary flex items-center justify-center p-6 relative overflow-hidden">
           {/* Background Pixel Blast */}
           <div className="fixed inset-0 z-0 opacity-60 pointer-events-none">
-            <PixelBlast
-              variant="square"
-              pixelSize={8}
-              color="#ef4444"
-              patternScale={3}
-              patternDensity={1.6}
-              pixelSizeJitter={0.15}
-              noiseAmount={0.06}
-              transparent={true}
-            />
+            <React.Suspense fallback={null}>
+              <LazyPixelBlast
+                variant="square"
+                pixelSize={8}
+                color="#ef4444"
+                patternScale={3}
+                patternDensity={1.6}
+                pixelSizeJitter={0.15}
+                noiseAmount={0.06}
+                transparent={true}
+              />
+            </React.Suspense>
           </div>
 
           <div className="macos-glass max-w-md p-8 text-center relative z-10">

@@ -4,7 +4,7 @@ const resourceSchema = new mongoose.Schema({
   title: { type: String, required: true },
   folder: { 
     type: String, 
-    enum: ['Arrays', 'Linked Lists', 'DP', 'Graphs', 'Trees', 'Stacks & Queues', 'Strings', 'Sorting'],
+    enum: ['Arrays', 'Linked Lists', 'DP', 'Graphs', 'Trees', 'Stacks & Queues', 'Strings', 'Sorting', 'Solutions'],
     required: true 
   },
   type: { type: String, enum: ['PDF', 'JSON', 'LINK'], required: true },
@@ -15,6 +15,7 @@ const resourceSchema = new mongoose.Schema({
   fileData: { type: String, select: false },
   mimeType: { type: String },
   sizeBytes: { type: Number },
+  isSolution: { type: Boolean, default: false },
   uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

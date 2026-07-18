@@ -6,6 +6,8 @@ const csv = require('csv-parser');
 const { Readable } = require('stream');
 const mammoth = require('mammoth');
 const { fetchLeetCodeDetails } = require('../../../services/leetcode.service');
+const { cleanupSubmissionsAndUserStats } = require('./challenge.service');
+const { getPointsForDifficulty } = require('../../../utils/xp');
 
 const getChallenges = async (req, res, next) => {
   try {
@@ -19,6 +21,8 @@ const getChallenges = async (req, res, next) => {
       sortBy = 'createdAt',
       sortDir = 'desc',
     } = req.query;
+
+    const safeLimit = Math.min(Number(limit) || 10, 100);
 
     const filter = {};
     const andConditions = [];
@@ -34,14 +38,7 @@ const getChallenges = async (req, res, next) => {
       });
     }
     if (search) {
-      andConditions.push({
-        $or: [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-          { tags: { $in: [new RegExp(search, 'i')] } },
-          { category: { $regex: search, $options: 'i' } }
-        ]
-      });
+      andConditions.push({ $text: { $search: search } });
     }
 
     if (andConditions.length > 0) {
@@ -49,7 +46,7 @@ const getChallenges = async (req, res, next) => {
     }
 
     const sortOrder = sortDir === 'asc' ? 1 : -1;
-    const skip = (page - 1) * limit;
+    const skip = (Number(page) - 1) * safeLimit;
 
     let total;
     let challenges;
@@ -89,7 +86,7 @@ const getChallenges = async (req, res, next) => {
         },
         { $sort: { deadlineSort: 1, difficultyOrder: 1, createdAt: -1 } },
         { $skip: skip },
-        { $limit: Number(limit) }
+        { $limit: safeLimit }
       ]);
 
       const [totalCount, aggResults] = await Promise.all([countPromise, aggPromise]);
@@ -115,7 +112,7 @@ const getChallenges = async (req, res, next) => {
         },
         { $sort: { difficultyOrder: sortOrder, createdAt: -1 } },
         { $skip: skip },
-        { $limit: Number(limit) },
+        { $limit: safeLimit },
         {
           $lookup: {
             from: 'questionsets',
@@ -139,7 +136,7 @@ const getChallenges = async (req, res, next) => {
       const sort = { [sortBy]: sortOrder };
       const [totalCount, findResults] = await Promise.all([
         Challenge.countDocuments(filter),
-        Challenge.find(filter).populate('questionSetId').sort(sort).skip(skip).limit(limit),
+        Challenge.find(filter).populate('questionSetId').sort(sort).skip(skip).limit(safeLimit),
       ]);
       total = totalCount;
       challenges = findResults;
@@ -153,11 +150,15 @@ const getChallenges = async (req, res, next) => {
           title: q.title,
           description: q.description || '',
           difficulty: q.difficulty || 'Easy',
-          points: q.points || 100,
+          points: getPointsForDifficulty(q.difficulty || 'Easy'),
           category: q.category || 'Logic',
           tags: q.tags || [],
           codeSnippets: q.codeSnippets || [],
+          solutions: q.solutions || [],
           functionName: q.functionName || '',
+          params: q.params || [],
+          returnType: q.returnType || '',
+          orderIndependent: !!q.orderIndependent,
           testCases: q.testCases || [],
           questionSetId: questionSet._id,
         }));
@@ -170,9 +171,9 @@ const getChallenges = async (req, res, next) => {
       data: challenges,
       meta: {
         page,
-        limit,
+        limit: safeLimit,
         total,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages: Math.ceil(total / safeLimit) || 1,
       },
     });
   } catch (err) {
@@ -197,6 +198,7 @@ const getChallengeById = async (req, res, next) => {
 
 const createChallenge = async (req, res, next) => {
   try {
+    req.body.points = req.body.points || getPointsForDifficulty(req.body.difficulty);
     const challenge = await Challenge.create(req.body);
 
     await logAudit({
@@ -230,6 +232,13 @@ const createChallenge = async (req, res, next) => {
 
 const updateChallenge = async (req, res, next) => {
   try {
+    if (req.body.points) {
+      // keep user-supplied points
+    } else if (req.body.difficulty) {
+      req.body.points = getPointsForDifficulty(req.body.difficulty);
+    } else {
+      delete req.body.points;
+    }
     const challenge = await Challenge.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
@@ -265,6 +274,10 @@ const deleteChallenge = async (req, res, next) => {
       res.status(404);
       throw new Error('Challenge not found');
     }
+
+    // --- Cleanup logic for Submissions and User Stats ---
+    await cleanupSubmissionsAndUserStats([challenge._id]);
+    // ----------------------------------------------------
 
     await challenge.deleteOne();
 
@@ -347,7 +360,8 @@ const importChallenges = async (req, res, next) => {
       description: stripHtml(c.description) || 'No description provided.',
       difficulty: ['Easy', 'Medium', 'Hard'].includes(c.difficulty) ? c.difficulty : 'Medium',
       category: stripHtml(c.category) || 'General',
-      points: Number(c.points) || 100,
+      points: getPointsForDifficulty(['Easy', 'Medium', 'Hard'].includes(c.difficulty) ? c.difficulty : 'Medium'),
+      solutions: Array.isArray(c.solutions) ? c.solutions : [],
       testCases: c.testCases && Array.isArray(c.testCases) ? c.testCases : [],
     }));
 
@@ -395,4 +409,3 @@ module.exports = {
   importChallenges,
   getLeetCodeDetails,
 };
-

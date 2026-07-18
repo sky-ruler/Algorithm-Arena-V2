@@ -1,5 +1,11 @@
 // src/models/Challenge.js
 const mongoose = require('mongoose');
+const { getPointsForDifficulty } = require('../../../utils/xp');
+
+// A plain `{ name: String, type: String }` object literal is misread by Mongoose:
+// the `type` key is its own type-shorthand syntax, so the whole object collapses
+// to a bare String schema instead of a subdocument. An explicit Schema avoids that.
+const paramSchema = new mongoose.Schema({ name: String, type: String }, { _id: false });
 
 const challengeSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -9,7 +15,7 @@ const challengeSchema = new mongoose.Schema({
     enum: ['Easy', 'Medium', 'Hard'], 
     default: 'Easy' 
   },
-  points: { type: Number, default: 100 },
+  points: { type: Number, default: function () { return getPointsForDifficulty(this.difficulty); } },
   category: { type: String, default: 'Logic' },
   link: { type: String, default: '' }, 
   tags: [{ type: String }], 
@@ -19,14 +25,26 @@ const challengeSchema = new mongoose.Schema({
     code: { type: String },
     _id: false, 
   }],
-  functionName: { type: String, default: '' }, 
-  testCases: [{ 
+  solutions: [{ 
+    lang: { type: String },
+    langSlug: { type: String },
+    code: { type: String },
+    _id: false, 
+  }],
+  functionName: { type: String, default: '' },
+  params: [paramSchema],
+  returnType: { type: String, default: '' },
+  // When true, test-case comparison ignores array/element order (e.g. Group Anagrams,
+  // where groups and their contents may be returned in any order).
+  orderIndependent: { type: Boolean, default: false },
+  hints: [{ type: String }],
+  testCases: [{
     label: { type: String },
     args: { type: mongoose.Schema.Types.Mixed },
     expected: { type: String },
     _id: false,
   }],
-  questionSetId: { type: mongoose.Schema.Types.ObjectId, ref: 'QuestionSet' }, 
+  questionSetId: { type: mongoose.Schema.Types.ObjectId, ref: 'QuestionSet' },
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -25,7 +25,8 @@ const ClanIdentityHoverCard = ({ clanId, position }) => {
       }
     },
     enabled: !!clanId,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const clan = clanQ.data;
@@ -45,7 +46,7 @@ const ClanIdentityHoverCard = ({ clanId, position }) => {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        navigate(`/clans`);
+        navigate(`/clans?preview=${clanId}`);
       }}
     >
       {clanQ.isLoading ? (
@@ -204,7 +205,8 @@ const ClanHoverCard = ({ clanId, children, className = "" }) => {
       }
     },
     enabled: showTooltip && !!clanId,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const calculatePosition = useCallback(() => {
@@ -256,8 +258,8 @@ const ClanHoverCard = ({ clanId, children, className = "" }) => {
   const handleClick = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate(`/clans`);
-  }, [navigate]);
+    navigate(`/clans?preview=${clanId}`);
+  }, [navigate, clanId]);
 
   useEffect(() => {
     if (!showTooltip) return;

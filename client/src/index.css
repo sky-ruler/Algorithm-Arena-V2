@@ -7,7 +7,7 @@
 
 /* Default Stack Imports: Inter (Body), Michroma & Orbitron (Headings) */
 @import url("https://rsms.me/inter/inter.css");
-@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Orbitron:wght@400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..600&family=Michroma&family=Orbitron:wght@400..900&family=Space+Grotesk:wght@300..700&display=swap');
 
 /* Additional Alternative Premium Fonts (Pre-imported for easy testing): */
 /*
@@ -18,7 +18,6 @@
    - Syne: Expressive, artistic headline font
    - Montserrat: Bold, high-character sans-serif
 */
-@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,400;1,200&family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 
 /* Tailwind Engine Directives */
 @tailwind base;
@@ -63,7 +62,22 @@
     --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
     --radius-lg: 1rem;
-    --radius-xl: 1.25rem;
+    --radius-xl: 1.5rem;
+
+    /* Surfaces (glass without blur — translucent fill + border + catch-light) */
+    --surface-1: rgba(255, 255, 255, 0.66);
+    --surface-2: rgba(15, 23, 42, 0.04);
+    --surface-overlay: rgba(255, 255, 255, 0.82);
+
+    /* Borders */
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --border-strong: rgba(15, 23, 42, 0.16);
+    --edge-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+
+    /* Difficulty (single source of truth, RGB triplets) */
+    --diff-easy: 34, 197, 94;
+    --diff-medium: 234, 179, 8;
+    --diff-hard: 239, 68, 68;
 
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
     --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -116,12 +130,24 @@
     --glass-spotlight: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y),
             rgba(99, 102, 241, 0.15),
             transparent 40%);
+
+    --surface-1: rgba(20, 22, 31, 0.62);
+    --surface-2: rgba(255, 255, 255, 0.045);
+    --surface-overlay: rgba(10, 10, 15, 0.78);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --edge-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+}
+
+html {
+    scrollbar-gutter: stable;
+    overflow-y: scroll;
 }
 
 body {
@@ -222,12 +248,10 @@ body {
 }
 
 .macos-glass {
-    background: var(--glass-surface);
-    backdrop-filter: blur(4px) saturate(120%);
-    -webkit-backdrop-filter: blur(4px) saturate(120%);
-    border: 1px solid var(--glass-border-color);
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
     box-shadow: var(--glass-shadow);
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -250,9 +274,15 @@ body {
 
 /* Apply default font families to HTML elements for seamless rendering */
 h1,
-.font-h1,
-.text-display,
 .text-page-title {
+    font-family: var(--font-h1);
+    background-image: linear-gradient(to bottom, var(--fg-primary), var(--fg-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.font-h1,
+.text-display {
     font-family: var(--font-h1);
 }
 
@@ -436,6 +466,80 @@ samp,
         width: 100%;
         border-collapse: collapse;
     }
+
+    /* ── Surface system ─────────────────────────────────────── */
+    .surface-card {
+        position: relative;
+        background: var(--surface-1);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        transition:
+            border-color 0.22s ease,
+            transform 0.22s ease,
+            box-shadow 0.22s ease;
+    }
+
+    /* Top catch-light: the "glass" read, no filter cost */
+    .surface-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 12px;
+        right: 12px;
+        height: 1px;
+        background: var(--edge-highlight);
+        opacity: 0.8;
+        pointer-events: none;
+    }
+
+    /* Spotlight — coordinates written by lib/spotlight.js */
+    .surface-card[data-spotlight]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: radial-gradient(480px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+                rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.12),
+                transparent 40%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+    }
+
+    @media (hover: hover) {
+        .surface-card:not(.card-static):hover {
+            border-color: rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.45);
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 0 0.5px rgba(var(--card-accent-rgb, var(--accent-rgb)), 0.18),
+                0 8px 24px rgba(0, 0, 0, 0.1);
+        }
+
+        .surface-card[data-spotlight]:not(.card-static):hover::after {
+            opacity: 1;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .surface-card[data-spotlight]::after {
+            display: none;
+        }
+    }
+
+    /* Overlay surfaces — the ONLY place backdrop-filter is allowed */
+    .surface-overlay {
+        background: var(--surface-overlay);
+        backdrop-filter: blur(12px) saturate(140%);
+        -webkit-backdrop-filter: blur(12px) saturate(140%);
+        border: 1px solid var(--border-subtle);
+    }
+
+    /* Inset/nested areas (code examples, table heads) */
+    .surface-inset {
+        background: var(--surface-2);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+    }
 }
 
 @media (max-width: 768px) {
@@ -477,7 +581,7 @@ samp,
     font-family: var(--font-body), sans-serif;
     font-size: 0.9rem;
     line-height: 1.65;
-    color: var(--fg-primary);
+    color: var(--fg-secondary);
 }
 
 .leetcode-description p {
@@ -549,34 +653,19 @@ samp,
     margin-top: 0.35rem;
 }
 
-/* Local Accent Overrides for Challenge Details Page */
-.challenge-details-theme {
-    /* Light Mode: Accent is blue */
-    --accent-primary: #4f46e5;
-    --accent-rgb: 79, 70, 229;
-    --accent-glow: rgba(79, 70, 229, 0.25);
-}
-
-[data-theme="dark"] .challenge-details-theme {
-    /* Dark Mode: Accent is yellow */
-    --accent-primary: #eabe11ff;
-    --accent-rgb: 234, 190, 17;
-    --accent-glow: rgba(234, 190, 17, 0.4);
-}
-
 /* Responsive Viewport Improvements */
 @media (max-width: 640px) {
     .app-container {
         padding-left: 1rem;
         padding-right: 1rem;
     }
-    
+
     .segmented {
         width: 100%;
         display: flex;
         overflow-x: auto;
     }
-    
+
     .segmented-btn {
         flex: 1;
         justify-content: center;
@@ -584,10 +673,62 @@ samp,
         font-size: 0.75rem;
         padding: 0.35rem 0.5rem;
     }
-    
+
     .chip-btn {
         font-size: 0.7rem;
         padding: 0.35rem 0.6rem;
+    }
+}
+
+/* Recent Activity Icon Glow in Dark Mode */
+[data-theme="dark"] .recent-activity-icon {
+    filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.75));
+}
+[data-theme="dark"] .recent-activity-icon-container {
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.25);
+    border: 1px solid rgba(var(--accent-rgb), 0.2);
+}
+
+/* First-Place Podium — static gold treatment (no infinite animations) */
+.podium-gold-static {
+    box-shadow: 0 0 16px rgba(250, 204, 21, 0.45), inset 0 0 6px rgba(250, 204, 21, 0.15);
+    border-color: rgba(250, 204, 21, 0.6);
+}
+
+.podium-trophy-static {
+    filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.6));
+}
+
+/* Panel slide-in animations (lg screens only) */
+@media (min-width: 1024px) {
+    @keyframes slideLeftIn {
+        from {
+            transform: translateX(-50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideRightIn {
+        from {
+            transform: translateX(50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    .panel-slide-left {
+        animation: slideLeftIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .panel-slide-right {
+        animation: slideRightIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 }
 

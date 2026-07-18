@@ -9,7 +9,7 @@ const { canActorManageUser } = require('../clans/clanScope.service');
 const getUsers = async (req, res, next) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
     const skip  = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
@@ -90,7 +90,7 @@ const updateUserRole = async (req, res, next) => {
 // @access  Private/Chief/Admin
 const updateUserLevel = async (req, res, next) => {
   try {
-    const { level } = req.body;
+    const { level, clearOverride } = req.body;
     if (!['Beginner', 'Intermediate', 'Advanced'].includes(level)) {
       return res.status(400).json({ success: false, message: 'Invalid level' });
     }
@@ -104,6 +104,8 @@ const updateUserLevel = async (req, res, next) => {
     }
 
     user.codingLevel = level;
+    // Mark as manually overridden unless explicitly clearing the override
+    user.codingLevelOverridden = clearOverride ? false : true;
     await user.save();
 
     return sendSuccess(res, { data: user, message: 'User level updated' });
@@ -158,6 +160,43 @@ const warnUser = async (req, res, next) => {
     }
 
     return sendSuccess(res, { data: { userId: user._id, status: user.status }, message: 'User warned successfully' });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// @desc    Clear user warning
+// @route   DELETE /api/users/:id/warn
+// @access  Private/Chief/Admin
+const clearWarningUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const scopeCheck = await canActorManageUser(req.user, user);
+    if (!scopeCheck.allowed) {
+      return res.status(403).json({ success: false, message: scopeCheck.reason || 'Not authorized' });
+    }
+
+    user.warningMessage = null;
+    const previousStatus = user.status;
+    if (user.status === 'Warned') {
+      user.status = 'Active';
+    }
+    await user.save();
+
+    // Create immutable Audit Log entry
+    const AuditLog = require('../audit/AuditLog.model');
+    await AuditLog.create({
+      action: 'CLEAR_WARNING',
+      targetUserId: user._id,
+      performedBy: req.user._id,
+      previousValue: previousStatus,
+      newValue: user.status,
+      ip: req.ip || '',
+    });
+
+    return sendSuccess(res, { data: { userId: user._id, status: user.status }, message: 'Warning cleared successfully' });
   } catch (err) {
     return next(err);
   }
@@ -279,6 +318,7 @@ module.exports = {
   updateUserRole,
   updateUserLevel,
   warnUser,
+  clearWarningUser,
   banUser,
   unbanUser,
   addAdminByEmail

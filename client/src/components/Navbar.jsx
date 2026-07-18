@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   FiCpu,
@@ -18,7 +18,6 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { useAuth } from "../context/useAuth";
-import ThemeToggle from "./ThemeToggle";
 import Logo from "./Logo";
 
 const Navbar = ({ onLogout }) => {
@@ -28,24 +27,31 @@ const Navbar = ({ onLogout }) => {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const { role, user } = useAuth();
 
-  const navItems = [
-    { name: "Dashboard", path: "/dashboard", icon: FiGrid },
-    { name: "Leaderboard", path: "/leaderboard", icon: FiAward },
-    { name: "Clan", path: "/clans", icon: FiUsers },
-    { name: "Archives", path: "/resources", icon: FiFolder },
-  ];
+  const navItems = useMemo(() => {
+    const items = [
+      { name: "Dashboard", path: "/dashboard", icon: FiGrid },
+      { name: "Leaderboard", path: "/leaderboard", icon: FiAward },
+      { name: "Clan", path: "/clans", icon: FiUsers },
+      { name: "Archives", path: "/resources", icon: FiFolder },
+    ];
+    if (role === 'clan-chief' || user?.isChief) {
+      items.push({ name: 'Clan Chief', path: '/chief-panel', icon: FiShield });
+    }
+    return items;
+  }, [role, user?.isChief]);
 
-
-
-  if (role === 'clan-chief' || user?.isChief) {
-    navItems.push({ name: 'Clan Chief', path: '/chief-panel', icon: FiShield });
-  }
+  // Secondary destinations for the mobile drawer only — Dashboard and
+  // Leaderboard live in the BottomTabBar on mobile.
+  const drawerNavItems = useMemo(
+    () => navItems.filter((item) => item.path !== "/dashboard" && item.path !== "/leaderboard"),
+    [navItems],
+  );
 
   const closeMenu = () => setMenuOpen(false);
 
   return (
     <>
-      <nav className="sticky top-0 z-50 w-full border-b border-glass-border bg-glass-surface backdrop-blur-md shadow-sm transition-all duration-300">
+      <nav className="sticky top-0 z-50 w-full surface-overlay border-x-0 border-t-0 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 gap-10">
             <Link
@@ -55,7 +61,7 @@ const Navbar = ({ onLogout }) => {
             >
               <Logo variant="arena" showText={true} size="sm" />
             </Link>
-            <div className="hidden md:flex items-center space-x-1">
+            <div className="hidden md:flex flex-1 items-center justify-center gap-2 lg:gap-4">
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 const Icon = item.icon;
@@ -64,9 +70,9 @@ const Navbar = ({ onLogout }) => {
                     key={item.path}
                     to={item.path}
                     className={clsx(
-                      "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 font-h2",
+                      "relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 font-h2",
                       isActive
-                        ? "bg-accent/10 text-accent"
+                        ? "text-accent"
                         : "text-secondary hover:text-primary hover:bg-white/5",
                     )}
                   >
@@ -77,16 +83,23 @@ const Navbar = ({ onLogout }) => {
                       )}
                     />
                     <span>{item.name}</span>
+                    {isActive && (
+                      <motion.span
+                        layoutId="nav-underline"
+                        className="absolute -bottom-4 left-2 right-2 h-[2px] rounded-full bg-accent"
+                        transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+                      />
+                    )}
                   </Link>
                 );
               })}
             </div>
 
-            <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex flex-row items-center gap-2 md:gap-4">
               <div className="relative">
                  <button
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="hidden md:flex items-center gap-3 group focus:outline-none py-1 px-2 rounded-2xl hover:bg-white/5 transition-all"
+                  className="hidden md:flex flex-row items-center gap-3 group focus:outline-none py-1 px-2 rounded-2xl hover:bg-white/5 transition-all"
                  >
                   <div className="w-10 h-10 rounded-full p-0.5 transition-all group-hover:scale-105 shadow-lg shadow-accent/20 border border-black/20 dark:border-white/20">
                     {user?.profilePicture ? (
@@ -97,7 +110,7 @@ const Navbar = ({ onLogout }) => {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col items-start text-left">
+                  <div className="flex flex-row items-center text-left gap-2">
                     <span className="text-xs font-bold text-primary group-hover:text-accent transition-colors">{user?.username || 'User'}</span>
                     <FiChevronDown className={clsx("text-secondary text-sm transition-transform duration-300", userDropdownOpen && "rotate-180")} />
                   </div>
@@ -114,9 +127,9 @@ const Navbar = ({ onLogout }) => {
                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute right-0 mt-3 w-64 macos-glass p-2 z-50 border-accent/20 shadow-2xl origin-top-right overflow-hidden"
+                          className="absolute right-0 mt-3 w-64 surface-overlay rounded-lg p-2 z-50 shadow-2xl origin-top-right overflow-hidden"
                         >
-                         <Link to="/profile" onClick={() => setUserDropdownOpen(false)} className="block px-4 py-3 bg-white/[0.03] rounded-xl mb-2 border border-white/5 hover:border-accent/30 hover:bg-accent/5 transition-all group">
+                         <Link to="/profile" onClick={() => setUserDropdownOpen(false)} className="block px-4 py-3 bg-surface-2 rounded-xl mb-2 border border-subtle hover:border-accent/30 hover:bg-accent/5 transition-all group">
                              <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-1">Signed in as</p>
                              <p className="text-sm font-bold text-primary group-hover:text-accent truncate transition-colors">{user?.username}</p>
                              <p className="text-[10px] text-tertiary truncate">{user?.email || 'Authenticated User'}</p>
@@ -146,7 +159,7 @@ const Navbar = ({ onLogout }) => {
                            </Link>
                          </div>
 
-                         <div className="mt-2 pt-2 border-t border-white/5">
+                         <div className="mt-2 pt-2 border-t border-subtle">
                            <button
                              onClick={() => {
                                setUserDropdownOpen(false);
@@ -220,7 +233,7 @@ const Navbar = ({ onLogout }) => {
 
           <div className="space-y-1">
             <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] px-3 mb-2">Navigation</p>
-            {navItems.map((item) => {
+            {drawerNavItems.map((item) => {
               const Icon = item.icon;
               const active = location.pathname === item.path;
               return (

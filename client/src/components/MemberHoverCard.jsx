@@ -31,7 +31,8 @@ const IdentityHoverCard = ({ userId, username, position }) => {
       }
     },
     enabled: !!(userId || username),
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
 
@@ -71,6 +72,17 @@ const IdentityHoverCard = ({ userId, username, position }) => {
            const hard = diff.hard ?? { solved: 0, total: 0 };
            const total = (easy.total + medium.total + hard.total) || 1;
            const solvedPct = Math.round(((p.acceptedCount || 0) / total) * 100);
+           const PRESTIGE_ORDER = { LEGENDARY: 3, EPIC: 2, RARE: 1, COMMON: 0 };
+           const RARITY = {
+             COMMON: { border: "#334155", bg: "#1e293b" },
+             RARE: { border: "#3b82f6", bg: "#1e3a5f" },
+             EPIC: { border: "#a855f7", bg: "#3b1f6e" },
+             LEGENDARY: { border: "#facc15", bg: "#422006" },
+           };
+           const topBadges = (p.badges || [])
+             .filter(b => b.isUnlocked)
+             .sort((a, b) => (PRESTIGE_ORDER[b.rarity] || 0) - (PRESTIGE_ORDER[a.rarity] || 0))
+             .slice(0, 3);
 
           return (
             <div
@@ -100,8 +112,27 @@ const IdentityHoverCard = ({ userId, username, position }) => {
                   </div>
 
                   {/* Info */}
-                  <div className="flex-1 text-center md:text-left pt-1">
-                    <h1 className="text-3xl md:text-4xl font-black text-primary tracking-tight mb-1 truncate">{p.username}</h1>
+                  <div className="flex-1 text-center md:text-left pt-1 min-w-0">
+                    <div className="flex flex-col md:flex-row items-center md:items-baseline gap-3 mb-1">
+                      <h1 className="text-3xl md:text-4xl font-black text-primary tracking-tight truncate leading-none">{p.username}</h1>
+                      {topBadges.length > 0 && (
+                        <div className="flex items-center gap-1.5 shrink-0 px-2 py-1 ">
+                          {topBadges.map((badge) => (
+                            <div
+                              key={badge._id}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-base border cursor-help shadow-sm transition-transform hover:scale-110"
+                              title={`${badge.name} (${badge.rarity}) — ${badge.description || ""}`}
+                              style={{
+                                background: RARITY[badge.rarity]?.bg || "#1e293b",
+                                borderColor: RARITY[badge.rarity]?.border || "#334155",
+                              }}
+                            >
+                              {badge.icon}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-sm italic text-secondary mb-4 font-medium truncate">"{p.bio || "Expert Algorithmist"}"</p>
 
                     <div className="flex flex-wrap justify-center md:justify-start gap-2">
@@ -205,7 +236,8 @@ const MemberHoverCard = ({ userId, username, children, className = "" }) => {
       }
     },
     enabled: showTooltip && !!(userId || username),
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const calculatePosition = useCallback(() => {
@@ -262,13 +294,13 @@ const MemberHoverCard = ({ userId, username, children, className = "" }) => {
     <>
       <span
         ref={triggerRef}
-        className={`relative inline-block cursor-pointer hover:text-accent transition-colors ${className}`}
+        className={`group/mhc relative inline-block cursor-pointer hover:text-accent transition-colors ${className}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}
       >
         {children}
-        <span className="absolute left-0 bottom-0 w-0 h-[1px] bg-accent transition-all duration-300 group-hover:w-full opacity-0 group-hover:opacity-100" />
+        <span className="absolute left-0 bottom-0 w-0 h-[1px] bg-accent transition-all duration-300 group-hover/mhc:w-full opacity-0 group-hover/mhc:opacity-100" />
       </span>
 
       {createPortal(

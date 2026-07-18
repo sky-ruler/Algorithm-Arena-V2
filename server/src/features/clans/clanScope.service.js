@@ -15,10 +15,38 @@ const withSession = (query, session) => {
   return query.session(session);
 };
 
+const chiefClanCache = new Map(); // userId -> { clan, expiresAt }
+const CACHE_TTL = 60 * 1000; // 1 minute
+
+const clearChiefClanCache = (userId) => {
+  if (userId) {
+    chiefClanCache.delete(userId);
+  } else {
+    chiefClanCache.clear();
+  }
+};
+
 const findChiefClan = async (userId, session = null) => {
   if (!userId) return null;
+
+  if (!session) {
+    const cached = chiefClanCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.clan;
+    }
+  }
+
   const query = Clan.findOne({ chief: userId }).select('_id chief members');
   const clan = await withSession(query, session).lean();
+
+  if (!session) {
+    if (chiefClanCache.size > 5000) chiefClanCache.clear();
+    chiefClanCache.set(userId, {
+      clan,
+      expiresAt: Date.now() + CACHE_TTL,
+    });
+  }
+
   return clan || null;
 };
 
@@ -112,14 +140,18 @@ const reconcileChiefRoleForUser = async (userId, { session = null } = {}) => {
   const chiefClanCount = await withSession(chiefClanCountQuery, session);
 
   if (chiefClanCount === 0 && user.role === 'clan-chief') {
-    user.role = 'user';
-    await user.save({ session });
+    await withSession(
+      User.updateOne({ _id: normalizedId }, { $set: { role: 'user' } }),
+      session
+    );
     return true;
   }
 
   if (chiefClanCount > 0 && user.role === 'user') {
-    user.role = 'clan-chief';
-    await user.save({ session });
+    await withSession(
+      User.updateOne({ _id: normalizedId }, { $set: { role: 'clan-chief' } }),
+      session
+    );
     return true;
   }
 
@@ -134,4 +166,5 @@ module.exports = {
   canActorManageUser,
   getActorMemberIdsInScope,
   reconcileChiefRoleForUser,
+  clearChiefClanCache,
 };

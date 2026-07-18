@@ -7,29 +7,61 @@ const { sendSuccess } = require('../../../utils/response');
 const { getUserRank } = require('../../../utils/leaderboard');
 const { getAllBadgesForUser } = require('../badges/badge.service');
 
+const heatmapCache = new Map();
+
+const getCachedHeatmap = async (userId) => {
+  const CACHE_TTL = process.env.NODE_ENV === 'test' ? 0 : 5 * 60 * 1000;
+  const now = Date.now();
+  const cacheKey = userId.toString();
+
+  const cached = heatmapCache.get(cacheKey);
+  if (cached && (now - cached.timestamp < CACHE_TTL)) {
+    return cached.data;
+  }
+
+  const data = await Submission.aggregate([
+    { $match: { userId, status: 'Accepted' } },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  if (CACHE_TTL > 0) {
+    if (heatmapCache.size > 5000) heatmapCache.clear();
+    heatmapCache.set(cacheKey, { data, timestamp: now });
+  }
+
+  return data;
+};
+
+const getLoginXpStats = async (userId, userPoints = 0) => {
+  const XpLog = mongoose.models.XpLog || mongoose.model('XpLog');
+  const [xpStats] = await XpLog.aggregate([
+    { $match: { userId, reason: 'Daily Login' } },
+    {
+      $group: {
+        _id: null,
+        loginXp: { $sum: '$amount' },
+        loginCount: { $sum: 1 }
+      }
+    }
+  ]);
+  const loginXp = xpStats?.loginXp || 0;
+  const loginCount = xpStats?.loginCount || 0;
+  const challengeXp = userPoints - loginXp;
+  return { loginXp, loginCount, challengeXp };
+};
+
 const getDashboardSummary = async (req, res, next) => {
   try {
-    const userIdObj = new mongoose.Types.ObjectId(req.user.id);
-    const [totalChallenges, pending, solvedStats] = await Promise.all([
+    const [totalChallenges, pending, solvedDistinct] = await Promise.all([
       Challenge.countDocuments(),
       Submission.countDocuments({ userId: req.user.id, status: 'Pending' }),
-      Submission.aggregate([
-        { $match: { userId: userIdObj, status: 'Accepted' } },
-        { $group: { _id: '$challengeId' } },
-        {
-          $lookup: {
-            from: 'challenges',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'challenge',
-          },
-        },
-        { $match: { challenge: { $ne: [] } } },
-        { $count: 'solved' }
-      ]),
+      Submission.distinct('challengeId', { userId: req.user.id, status: 'Accepted' }),
     ]);
-
-    const solved = solvedStats.length > 0 ? solvedStats[0].solved : 0;
 
     // Rank is the most expensive call; keep parallel DB work minimal.
     const recentActivity = await Submission.find({ userId: req.user.id })
@@ -42,7 +74,7 @@ const getDashboardSummary = async (req, res, next) => {
     return sendSuccess(res, {
       data: {
         totalChallenges,
-        solved,
+        solved: solvedDistinct.length,
         pending,
         rank,
         recentActivity,
@@ -57,28 +89,18 @@ const getProfileStats = async (req, res, next) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user.id);
 
-    const [baseStats] = await Submission.aggregate([
+    // Separate counts for non-unique metrics
+    const totalSubmissions = await Submission.countDocuments({ userId });
+    const rejectedCount = await Submission.countDocuments({ userId, status: 'Rejected' });
+
+    // Calculate unique challenge stats
+    const [stats] = await Submission.aggregate([
       { $match: { userId } },
       {
         $group: {
-          _id: null,
-          totalSubmissions: { $sum: 1 },
-          rejectedCount: {
-            $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] },
-          },
-          pendingCount: {
-            $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] },
-          },
-        },
-      },
-    ]);
-
-    const [stats] = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
           _id: '$challengeId',
-        },
+          statuses: { $push: '$status' },
+        }
       },
       {
         $lookup: {
@@ -88,34 +110,34 @@ const getProfileStats = async (req, res, next) => {
           as: 'challenge',
         },
       },
+      { $unwind: '$challenge' },
       {
-        $addFields: {
-          challenge: { $arrayElemAt: ['$challenge', 0] },
-        },
+        $project: {
+          difficulty: '$challenge.difficulty',
+          isAccepted: { $in: ['Accepted', '$statuses'] },
+          isPending: { $in: ['Pending', '$statuses'] },
+        }
       },
-      { $match: { challenge: { $ne: null } } },
       {
         $group: {
           _id: null,
-          acceptedCount: { $sum: 1 },
-          totalPoints: { $sum: '$challenge.points' },
+          acceptedCount: {
+            $sum: { $cond: ['$isAccepted', 1, 0] },
+          },
+          pendingCount: {
+            $sum: { $cond: ['$isPending', 1, 0] },
+          },
           easySolved: {
-            $sum: {
-              $cond: [{ $eq: ['$challenge.difficulty', 'Easy'] }, 1, 0],
-            },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Easy'] }] }, 1, 0] },
           },
           mediumSolved: {
-            $sum: {
-              $cond: [{ $eq: ['$challenge.difficulty', 'Medium'] }, 1, 0],
-            },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Medium'] }] }, 1, 0] },
           },
           hardSolved: {
-            $sum: {
-              $cond: [{ $eq: ['$challenge.difficulty', 'Hard'] }, 1, 0],
-            },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Hard'] }] }, 1, 0] },
           },
-        },
-      },
+        }
+      }
     ]);
 
     // Total counts for each difficulty (used for percentages)
@@ -141,22 +163,14 @@ const getProfileStats = async (req, res, next) => {
       : 0;
 
     // Calculate Heatmap Data
-    const heatmapAggregation = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" } },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
+    const heatmapAggregation = await getCachedHeatmap(userId);
 
     const heatmapMap = {};
     heatmapAggregation.forEach(item => {
       heatmapMap[item._id] = item.count;
     });
 
-    const user = await User.findById(req.user.id).select('createdAt points');
+    const user = await User.findById(req.user.id).select('createdAt points solvedProblems');
     const joinDate = user?.createdAt || new Date();
     
     // Normalize to UTC midnight for consistency with $dateToString
@@ -168,11 +182,13 @@ const getProfileStats = async (req, res, next) => {
     for (let i = 0; i < 365; i++) {
       const d = new Date(startUTC + (i * 24 * 60 * 60 * 1000));
       const dateStr = d.toISOString().split('T')[0];
+      if (dateStr > todayStr) {
+        break;
+      }
       
       heatmapData.push({
         date: dateStr,
-        count: dateStr > todayStr ? 0 : (heatmapMap[dateStr] || 0),
-        isFuture: dateStr > todayStr
+        count: heatmapMap[dateStr] || 0
       });
     }
 
@@ -190,14 +206,11 @@ const getProfileStats = async (req, res, next) => {
        }
     });
 
-    const todayIndex = heatmapData.findIndex(d => d.date === todayStr);
-    const endIndex = todayIndex !== -1 ? todayIndex : heatmapData.length - 1;
-
-    for (let i = endIndex; i >= 0; i--) {
+    for (let i = heatmapData.length - 1; i >= 0; i--) {
         if (heatmapData[i].count > 0) {
             currentStreak++;
         } else {
-            if (i === endIndex) {
+            if (i === heatmapData.length - 1) {
                 continue;
             } else {
                 break;
@@ -210,16 +223,27 @@ const getProfileStats = async (req, res, next) => {
       .sort({ submittedAt: -1 })
       .limit(10);
 
+    // Get XP breakdown
+    const { loginXp, loginCount, challengeXp } = await getLoginXpStats(userId, user.points);
+
     // Compute unlocked badges dynamically
     const unlockedBadges = await getAllBadgesForUser(userId);
 
     return sendSuccess(res, {
       data: {
-        totalSubmissions: baseStats?.totalSubmissions || 0,
-        acceptedCount: stats?.acceptedCount || 0,
-        rejectedCount: baseStats?.rejectedCount || 0,
-        pendingCount: baseStats?.pendingCount || 0,
-        totalPoints: user?.points || 0,
+        stats: {
+          totalSubmissions: totalSubmissions || 0,
+          acceptedCount: user.solvedProblems || 0,
+          rejectedCount: rejectedCount || 0,
+          pendingCount: stats?.pendingCount || 0,
+          totalPoints: user.points || 0,
+          easySolved: stats?.easySolved || 0,
+          mediumSolved: stats?.mediumSolved || 0,
+          hardSolved: stats?.hardSolved || 0,
+          loginXp,
+          loginCount,
+          challengeXp,
+        },
         difficultyBreakdown: {
           easy: { solved: stats?.easySolved || 0, total: totalsMap.Easy },
           medium: { solved: stats?.mediumSolved || 0, total: totalsMap.Medium },
@@ -243,9 +267,9 @@ const getUserProfile = async (req, res, next) => {
   try {
     let user;
     if (req.params.userId) {
-      user = await User.findById(req.params.userId).populate('clan', 'name tag');
+      user = await User.findById(req.params.userId).populate('clan', 'name tag').populate('featuredBadge');
     } else if (req.params.username) {
-      user = await User.findOne({ username: req.params.username }).populate('clan', 'name tag');
+      user = await User.findOne({ username: { $regex: new RegExp(`^${req.params.username}$`, 'i') } }).populate('clan', 'name tag').populate('featuredBadge');
     }
 
     if (!user) {
@@ -255,28 +279,13 @@ const getUserProfile = async (req, res, next) => {
     const userId = user._id;
 
     // Calculate basic stats for this user
-    const [baseStats] = await Submission.aggregate([
+    const [stats] = await Submission.aggregate([
       { $match: { userId } },
       {
         $group: {
-          _id: null,
-          totalSubmissions: { $sum: 1 },
-          rejectedCount: {
-            $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] },
-          },
-          pendingCount: {
-            $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] },
-          },
-        },
-      },
-    ]);
-
-    const [stats] = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
           _id: '$challengeId',
-        },
+          statuses: { $push: '$status' },
+        }
       },
       {
         $lookup: {
@@ -286,28 +295,31 @@ const getUserProfile = async (req, res, next) => {
           as: 'challenge',
         },
       },
+      { $unwind: '$challenge' },
       {
-        $addFields: {
-          challenge: { $arrayElemAt: ['$challenge', 0] },
-        },
+        $project: {
+          difficulty: '$challenge.difficulty',
+          isAccepted: { $in: ['Accepted', '$statuses'] },
+          isPending: { $in: ['Pending', '$statuses'] },
+        }
       },
-      { $match: { challenge: { $ne: null } } },
       {
         $group: {
           _id: null,
-          acceptedCount: { $sum: 1 },
-          totalPoints: { $sum: '$challenge.points' },
+          pendingCount: {
+            $sum: { $cond: ['$isPending', 1, 0] },
+          },
           easySolved: {
-            $sum: { $cond: [{ $eq: ['$challenge.difficulty', 'Easy'] }, 1, 0] },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Easy'] }] }, 1, 0] },
           },
           mediumSolved: {
-            $sum: { $cond: [{ $eq: ['$challenge.difficulty', 'Medium'] }, 1, 0] },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Medium'] }] }, 1, 0] },
           },
           hardSolved: {
-            $sum: { $cond: [{ $eq: ['$challenge.difficulty', 'Hard'] }, 1, 0] },
+            $sum: { $cond: [{ $and: ['$isAccepted', { $eq: ['$difficulty', 'Hard'] }] }, 1, 0] },
           },
-        },
-      },
+        }
+      }
     ]);
 
     // Get total counts for difficulty breakdown
@@ -318,15 +330,7 @@ const getUserProfile = async (req, res, next) => {
     difficultyTotals.forEach((d) => { totalsMap[d._id] = d.count; });
 
     // Calculate streak from heatmap
-    const heatmapAggregation = await Submission.aggregate([
-      { $match: { userId, status: 'Accepted' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    const heatmapAggregation = await getCachedHeatmap(userId);
     const heatmapMap = {};
     heatmapAggregation.forEach((item) => { heatmapMap[item._id] = item.count; });
 
@@ -343,11 +347,13 @@ const getUserProfile = async (req, res, next) => {
     for (let i = 0; i < 365; i++) {
       const d = new Date(startUTC + (i * 24 * 60 * 60 * 1000));
       const dateStr = d.toISOString().split('T')[0];
+      if (dateStr > todayStr) {
+        break;
+      }
       
       heatmapData.push({
         date: dateStr,
-        count: dateStr > todayStr ? 0 : (heatmapMap[dateStr] || 0),
-        isFuture: dateStr > todayStr
+        count: heatmapMap[dateStr] || 0
       });
     }
 
@@ -360,14 +366,11 @@ const getUserProfile = async (req, res, next) => {
        }
     });
 
-    const todayIndex = heatmapData.findIndex(d => d.date === todayStr);
-    const endIndex = todayIndex !== -1 ? todayIndex : heatmapData.length - 1;
-
-    for (let i = endIndex; i >= 0; i--) {
+    for (let i = heatmapData.length - 1; i >= 0; i--) {
         if (heatmapData[i].count > 0) {
             currentStreak++;
         } else {
-            if (i === endIndex) {
+            if (i === heatmapData.length - 1) {
                 continue;
             } else {
                 break;
@@ -379,6 +382,9 @@ const getUserProfile = async (req, res, next) => {
       .populate('challengeId', 'title difficulty points')
       .sort({ submittedAt: -1 })
       .limit(10);
+
+    // Get XP breakdown
+    const { loginXp, loginCount, challengeXp } = await getLoginXpStats(userId, user.points);
 
     // Global rank using shared utility (DB-level, no full array in RAM)
     const rank = await getUserRank(userId);
@@ -395,6 +401,7 @@ const getUserProfile = async (req, res, next) => {
       _id: user._id,
       username: user.username,
       role: user.role,
+      customTitle: user.customTitle || null,
       clan: user.clan,
       profilePicture: user.profilePicture,
       bio: user.bio,
@@ -403,11 +410,14 @@ const getUserProfile = async (req, res, next) => {
       twitter: user.twitter,
       linkedin: user.linkedin,
       website: user.website,
-      points: user.points,
-      solvedProblems: user.solvedProblems,
-      acceptedCount: stats?.acceptedCount || 0,
-      pendingCount: baseStats?.pendingCount || 0,
+      points: user.points || 0,
+      solvedProblems: user.solvedProblems || 0,
+      acceptedCount: user.solvedProblems || 0,
+      pendingCount: stats?.pendingCount || 0,
       totalPoints: user.points || 0,
+      loginXp,
+      loginCount,
+      challengeXp,
       streak: currentStreak,
       rank,
       difficultyBreakdown: {
@@ -438,40 +448,199 @@ const getUserProfile = async (req, res, next) => {
 
 const getAdminDashboardSummary = async (req, res, next) => {
   try {
-    const totalMembers = await User.countDocuments();
-    const activeClans = await Clan.countDocuments();
-    
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    
-    const activeThisWeekResult = await Submission.aggregate([
-      { $match: { submittedAt: { $gte: oneWeekAgo } } },
-      { $group: { _id: "$userId" } },
-      { $count: "activeUsers" }
+
+    const [
+      totalMembers,
+      activeClans,
+      activeThisWeekResult,
+      totalSubmissions,
+      pendingAssignments,
+      clans
+    ] = await Promise.all([
+      User.countDocuments(),
+      Clan.countDocuments({ status: 'active' }),
+      Submission.aggregate([
+        { $match: { submittedAt: { $gte: oneWeekAgo } } },
+        { $group: { _id: "$userId" } },
+        { $count: "activeUsers" }
+      ]),
+      Submission.countDocuments(),
+      User.countDocuments({ clan: null, role: 'user' }),
+      Clan.find({ status: 'active' }).populate('members', '_id points solvedProblems')
     ]);
+
     const activeThisWeek = activeThisWeekResult[0]?.activeUsers || 0;
     
-    const totalSubmissions = await Submission.countDocuments();
+    // Gather all member IDs across all active clans
+    const memberIds = [];
+    clans.forEach(c => {
+      if (c.members) {
+        c.members.forEach(m => {
+          memberIds.push(m._id);
+        });
+      }
+    });
+
+    // Query weekly accepted submissions for those members to count unique challenge solves
+    const weeklySolvedMap = {};
+    if (memberIds.length > 0) {
+      const weeklyStats = await Submission.aggregate([
+        { 
+          $match: { 
+            userId: { $in: memberIds }, 
+            status: 'Accepted', 
+            submittedAt: { $gte: oneWeekAgo } 
+          } 
+        },
+        {
+          $group: {
+            _id: { userId: '$userId', challengeId: '$challengeId' }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.userId',
+            weeklySolved: { $sum: 1 }
+          }
+        }
+      ]);
+      weeklyStats.forEach(stat => {
+        weeklySolvedMap[stat._id.toString()] = stat.weeklySolved;
+      });
+    }
+
+    const TARGET_PROBLEMS = 5;
     
-    const pendingAssignments = await User.countDocuments({ clan: null, role: 'user' });
-    
-    const avgCompletion = 68; // Mocked average for now to keep it lightweight
-    
-    const clans = await Clan.find().limit(4);
-    const clanPerformance = clans.map((c, i) => {
-      const colors = [
-        'from-purple-500 to-indigo-500',
-        'from-blue-500 to-cyan-500',
-        'from-green-500 to-emerald-500',
-        'from-orange-500 to-red-500'
-      ];
+    // Compute completion rate and performance for each clan
+    const clanCompletions = clans.map(c => {
+      const members = c.members || [];
+      const memberCount = members.length;
+      if (memberCount === 0) {
+        return {
+          clan: c,
+          completion: 0,
+          totalPoints: 0,
+          solvedCount: 0,
+          averagePoints: 0
+        };
+      }
+      let totalSolved = 0;
+      let totalPoints = 0;
+      let totalSolvedCount = 0;
+      members.forEach(m => {
+        const solved = weeklySolvedMap[m._id.toString()] || 0;
+        totalSolved += Math.min(solved, TARGET_PROBLEMS);
+        totalPoints += m.points || 0;
+        totalSolvedCount += m.solvedProblems || 0;
+      });
+      const totalPossible = memberCount * TARGET_PROBLEMS;
+      const completion = Math.round((totalSolved / totalPossible) * 100);
       return {
-        name: c.name,
-        tag: c.tag,
-        completion: Math.floor(Math.random() * 40) + 50, // Mocked per clan
-        color: colors[i % colors.length]
+        clan: c,
+        completion,
+        totalPoints,
+        solvedCount: totalSolvedCount,
+        averagePoints: Math.round(totalPoints / memberCount)
       };
     });
+
+    // Calculate avgCompletion across all active clans
+    const avgCompletion = clanCompletions.length > 0
+      ? Math.round(clanCompletions.reduce((sum, c) => sum + c.completion, 0) / clanCompletions.length)
+      : 0;
+
+    // Clans comparison list
+    const clansComparative = clanCompletions.map(c => ({
+      _id: c.clan._id,
+      name: c.clan.name,
+      tag: c.clan.tag,
+      memberCount: c.clan.members?.length || 0,
+      totalPoints: c.totalPoints,
+      solvedCount: c.solvedCount,
+      averagePoints: c.averagePoints,
+      completion: c.completion
+    })).sort((a, b) => b.totalPoints - a.totalPoints);
+
+    // Top 10 members
+    const topMembers = await User.find({ role: 'user' })
+      .select('username email points solvedProblems streak codingLevel clan')
+      .populate('clan', 'name tag')
+      .sort({ points: -1 })
+      .limit(10);
+
+    // Daily submissions activity (last 14 days)
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const dailySubmissions = await Submission.aggregate([
+      { $match: { submittedAt: { $gte: fourteenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const activityTrend = [];
+    const dateMap = {};
+    dailySubmissions.forEach(ds => {
+      dateMap[ds._id] = ds.count;
+    });
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      activityTrend.push({
+        date: dateStr,
+        count: dateMap[dateStr] || 0
+      });
+    }
+
+    // Difficulty stats
+    const difficultyDistribution = await Challenge.aggregate([
+      {
+        $group: {
+          _id: '$difficulty',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const difficultyMap = { Easy: 0, Medium: 0, Hard: 0 };
+    difficultyDistribution.forEach(d => {
+      difficultyMap[d._id] = d.count;
+    });
+
+    const solvedChallengesStats = await Submission.aggregate([
+      { $match: { status: 'Accepted' } },
+      {
+        $group: {
+          _id: '$challengeId',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const challengesList = await Challenge.find({}).select('_id difficulty').lean();
+    const challengeDifficultyMap = {};
+    challengesList.forEach(c => {
+      challengeDifficultyMap[c._id.toString()] = c.difficulty;
+    });
+
+    const solvedDifficultyMap = { Easy: 0, Medium: 0, Hard: 0 };
+    solvedChallengesStats.forEach(stat => {
+      const diff = challengeDifficultyMap[stat._id?.toString()];
+      if (diff && solvedDifficultyMap[diff] !== undefined) {
+        solvedDifficultyMap[diff] += stat.count;
+      }
+    });
+
+    const difficultyStats = {
+      total: difficultyMap,
+      solved: solvedDifficultyMap
+    };
 
     return sendSuccess(res, {
       data: {
@@ -481,7 +650,10 @@ const getAdminDashboardSummary = async (req, res, next) => {
         totalSubmissions,
         avgCompletion,
         pendingAssignments,
-        clanPerformance
+        clansComparative,
+        topMembers,
+        activityTrend,
+        difficultyStats
       }
     });
   } catch (err) {
@@ -565,11 +737,51 @@ const getPendingTasks = async (req, res, next) => {
   }
 };
 
+const updateFeaturedBadge = async (req, res, next) => {
+  try {
+    const { badgeId } = req.body;
+    if (!badgeId) {
+      const user = await User.findByIdAndUpdate(req.user.id, { featuredBadge: null }, { new: true }).populate('featuredBadge');
+      return sendSuccess(res, { data: user });
+    }
+    const unlockedBadges = await getAllBadgesForUser(req.user.id);
+    const hasBadge = unlockedBadges.some(b => b._id.toString() === badgeId.toString());
+    if (!hasBadge) {
+      return res.status(403).json({ success: false, message: 'You have not unlocked this badge.' });
+    }
+    const user = await User.findByIdAndUpdate(req.user.id, { featuredBadge: badgeId }, { new: true }).populate('featuredBadge');
+    return sendSuccess(res, { data: user, message: 'Featured badge updated successfully!' });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const getPublicStats = async (req, res, next) => {
+  try {
+    const [totalChallenges, totalCoders, totalSubmissions] = await Promise.all([
+      Challenge.countDocuments(),
+      User.countDocuments({ role: 'user' }),
+      Submission.countDocuments(),
+    ]);
+
+    return sendSuccess(res, {
+      data: {
+        totalChallenges,
+        totalCoders,
+        totalSubmissions,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   getDashboardSummary,
   getProfileStats,
   getUserProfile,
+  updateFeaturedBadge,
   getAdminDashboardSummary,
-  getPendingTasks
+  getPendingTasks,
+  getPublicStats
 };
-

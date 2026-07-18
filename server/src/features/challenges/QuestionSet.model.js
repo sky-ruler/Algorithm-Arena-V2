@@ -1,4 +1,10 @@
 const mongoose = require('mongoose');
+const { getPointsForDifficulty } = require('../../../utils/xp');
+
+// A plain `{ name: String, type: String }` object literal is misread by Mongoose:
+// the `type` key is its own type-shorthand syntax, so the whole object collapses
+// to a bare String schema instead of a subdocument. An explicit Schema avoids that.
+const paramSchema = new mongoose.Schema({ name: String, type: String }, { _id: false });
 
 const questionSetSchema = new mongoose.Schema({
   title: {
@@ -22,7 +28,7 @@ const questionSetSchema = new mongoose.Schema({
   questions: [{
     title: String,
     difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard'] },
-    points: Number,
+    points: { type: Number, default: function () { return getPointsForDifficulty(this.difficulty); } },
     category: String,
     description: String,
     hints: [String],
@@ -32,7 +38,16 @@ const questionSetSchema = new mongoose.Schema({
       langSlug: String,
       code: String
     }],
+    solutions: [{
+      lang: String,
+      langSlug: String,
+      code: String
+    }],
     functionName: { type: String, default: '' },
+    params: [paramSchema],
+    returnType: { type: String, default: '' },
+    // When true, test-case comparison ignores array/element order (e.g. Group Anagrams).
+    orderIndependent: { type: Boolean, default: false },
     testCases: [{
       label: { type: String },
       args: { type: mongoose.Schema.Types.Mixed },

@@ -3,18 +3,20 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useScroll, useTransform } from "framer-motion";
 import {
-  FiArrowRight,
-  FiClock,
   FiActivity,
+  FiArrowRight,
   FiZap,
-  FiAward,
   FiUsers,
+  FiAward,
+  FiClock,
 } from "react-icons/fi";
 import Card from "../components/Card";
 import SkeletonCard from "../components/SkeletonCard";
 import { useAuth } from "../context/useAuth";
 import { api } from "../lib/api";
 import Logo from "../components/Logo";
+import Footer from "../components/Footer";
+import { getDifficultyRGB } from "../constants/difficulty";
 
 
 const MotionBlock = motion.div;
@@ -123,11 +125,11 @@ const GridBackground = () => (
 /* ── Floating code snippets ── */
 const SNIPPETS = [
   "O(n log n)",
-  "adj[u].push_back(v)",
   "1 << n",
   "dp[mask][i]",
   "LCA(u, v)",
   "segmentTree.query(l, r)",
+  "adj[u].push_back(v)",
   "T(n) = 2T(n/2) + O(n)",
   "__builtin_popcount()",
   "priority_queue<int> pq",
@@ -195,18 +197,7 @@ const StatPill = ({ icon: Icon, value, label, color }) => (
   </div>
 );
 
-const getDifficultyRGB = (diff) => {
-  switch (diff) {
-    case "Easy":
-      return "34, 197, 94";
-    case "Medium":
-      return "234, 179, 8";
-    case "Hard":
-      return "239, 68, 68";
-    default:
-      return "0, 122, 255";
-  }
-};
+
 
 /* ════════════════════════════════════════ */
 const Home = () => {
@@ -215,7 +206,7 @@ const Home = () => {
   const homeRef = useRef(null);
   const { scrollY } = useScroll();
   const heroY = useTransform(scrollY, [0, 400], [0, -60]);
-  const heroOpacity = useTransform(scrollY, [0, 300], [1, 0.1]);
+  const heroOpacity = useTransform(scrollY, [0, 600], [1, 0]);
 
   useEffect(() => {
     const el = homeRef.current;
@@ -286,6 +277,21 @@ const Home = () => {
   });
 
   const challenges = challengesQuery.data || [];
+
+  const publicStatsQuery = useQuery({
+    queryKey: ["public-stats"],
+    queryFn: async () => {
+      const res = await api.get("/api/dashboard/public-stats");
+      return res.data.data;
+    },
+  });
+
+  const stats = publicStatsQuery.data;
+  const challengesCount = stats ? `${stats.totalChallenges}` : "...";
+  const codersCount = stats ? `${stats.totalCoders}` : "...";
+  const submissionsCount = stats
+    ? (stats.totalSubmissions >= 1000 ? `${(stats.totalSubmissions / 1000).toFixed(1)}k` : `${stats.totalSubmissions}`)
+    : "...";
 
   const submissionsQuery = useQuery({
     queryKey: ["my-submissions"],
@@ -361,38 +367,19 @@ const Home = () => {
   }, [submissionsQuery.data, drafts]);
 
 
-  return (
-    <div ref={homeRef} className="min-h-screen flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white">
-      <GridBackground />
+  const isScrollable = !isAuthenticated
+    ? false
+    : (challengesQuery.isLoading || challenges.length > 0 || recentActivities.length > 0);
 
-      {/* Floating snippets — decorative only */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        {SNIPPETS.map((s, i) => {
-          const depth = 0.4 + (i % 4) * 0.2;
-          const rotation = -8 + (i % 5) * 4;
-          return (
-            <FloatingSnippet
-              key={i}
-              text={s}
-              depth={depth}
-              rotation={rotation}
-              style={{
-                top: `${8 + ((i * 7.5) % 85)}%`,
-                left: `${3 + ((i * 11) % 94)}%`,
-                opacity: .6 + (i % 3) * 0.75,
-              }}
-            />
-          );
-        })}
-      </div>
-
+  const heroAndNav = (
+    <>
       {/* ── Navigation ── */}
-      <nav className="relative z-10 flex justify-between items-center px-6 py-5 w-full">
-        <Link to="/" className="group flex items-center">
-          <Logo variant="arena" showText={true} size="sm" />
+      <nav className="relative z-10 flex justify-between items-center px-4 sm:px-6 py-4 sm:py-5 w-full overflow-hidden">
+        <Link to="/" className="group flex items-center shrink-0 min-w-0 mr-1 sm:mr-4">
+          <Logo variant="arena" showText={true} size="sm" className="scale-90 origin-left sm:scale-100" />
         </Link>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-1 sm:gap-2 items-center shrink-0">
           {isAuthenticated ? (
             <Link
               to="/dashboard"
@@ -408,13 +395,13 @@ const Home = () => {
             <>
               <Link
                 to="/login"
-                className="px-4 py-1.5 text-secondary hover:text-primary rounded-full font-semibold text-sm transition-all hover:bg-white/5"
+                className="px-2 sm:px-4 py-1.5 text-secondary hover:text-primary rounded-full font-semibold text-xs sm:text-sm transition-all hover:bg-white/5 whitespace-nowrap"
               >
                 Log in
               </Link>
               <Link
                 to="/register"
-                className="px-4 py-1.5 rounded-full text-white font-bold text-sm transition-all hover:-translate-y-0.5 active:scale-95"
+                className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-white font-bold text-xs sm:text-sm transition-all hover:-translate-y-0.5 active:scale-95 whitespace-nowrap"
                 style={{
                   background: `linear-gradient(135deg, rgba(var(--accent-rgb), 1) 0%, #a855f7 100%)`,
                   boxShadow: `0 4px 12px rgba(var(--accent-rgb), 0.25)`,
@@ -431,7 +418,12 @@ const Home = () => {
       <motion.div
         ref={heroRef}
         style={{ y: heroY, opacity: heroOpacity }}
-        className="relative z-10 flex flex-col items-center justify-center text-center px-4 pt-16 pb-24"
+        className={`relative z-10 flex flex-col items-center justify-center text-center px-4 ${!isAuthenticated
+          ? "flex-1"
+          : isScrollable
+            ? "pt-16 pb-24"
+            : "flex-1"
+          }`}
       >
         {/* GDG badge */}
         <motion.div
@@ -461,12 +453,12 @@ const Home = () => {
           </div>
         </motion.div>
 
-        {/* Headline */}
+        {/* Headline with Blueprint Brackets */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="max-w-5xl mx-auto"
+          className="relative max-w-5xl mx-auto"
         >
           {/* Decorative rank label */}
           <div className="flex items-center justify-center gap-3 mb-4">
@@ -478,7 +470,7 @@ const Home = () => {
               className="font-mono text-[10px] font-bold tracking-[0.3em] uppercase"
               style={{ color: `rgba(var(--accent-rgb), 0.6)` }}
             >
-              Season 02
+              Season 2
             </span>
             <div
               className="h-px flex-1 max-w-[80px]"
@@ -486,20 +478,22 @@ const Home = () => {
             />
           </div>
 
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter leading-[0.9] mb-2">
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter leading-[0.9] mb-2 select-none">
             <span className="text-primary block">Compete.</span>
             <span className="text-primary block">
               Solve.{" "}
-              <span
-                className="relative inline-block"
-                style={{
-                  background: `linear-gradient(135deg, rgb(var(--accent-rgb)), #a855f7, #ec4899)`,
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                Dominate.
+              <span className="relative inline-block">
+                <span
+                  className="relative inline-block"
+                  style={{
+                    background: `linear-gradient(135deg, rgb(var(--accent-rgb)), #a855f7, #ec4899)`,
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  Dominate.
+                </span>
               </span>
             </span>
           </h1>
@@ -509,7 +503,7 @@ const Home = () => {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.25 }}
-          className="text-lg md:text-xl text-secondary max-w-xl mx-auto leading-relaxed mt-6"
+          className="footer-page text-lg md:text-xl text-secondary max-w-xl mx-auto leading-relaxed mt-6"
         >
           The competitive programming arena built for ITER students. Sharpen
           your DSA skills, climb the ranks, and get interview-ready.
@@ -555,40 +549,83 @@ const Home = () => {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="flex flex-wrap justify-center gap-3 mt-12"
+          className="flex flex-wrap justify-center gap-3 mt-12 hidden"
         >
           <StatPill
             icon={FiZap}
-            value="50+"
+            value={challengesCount}
             label="Challenges"
             color="234, 179, 8"
           />
           <StatPill
             icon={FiUsers}
-            value="200+"
+            value={codersCount}
             label="Coders"
             color="34, 197, 94"
           />
           <StatPill
             icon={FiAward}
-            value="1.5k"
+            value={submissionsCount}
             label="Submissions"
             color="var(--accent-rgb)"
           />
         </motion.div>
       </motion.div>
+    </>
+  );
+
+  return (
+    <div
+      ref={homeRef}
+      className={`${(isScrollable || !isAuthenticated) ? "min-h-screen" : "h-screen"
+        } flex flex-col relative overflow-hidden bg-app text-primary font-sans selection:bg-accent selection:text-white`}
+    >
+      <GridBackground />
+
+      {/* Floating snippets — decorative only */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        {SNIPPETS.map((s, i) => {
+          const depth = 0.4 + (i % 4) * 0.2;
+          const rotation = -8 + (i % 5) * 4;
+          return (
+            <FloatingSnippet
+              key={i}
+              text={s}
+              depth={depth}
+              rotation={rotation}
+              style={{
+                top: `${8 + ((i * 7.5) % 85)}%`,
+                left: `${3 + ((i * 11) % 94)}%`,
+                opacity: .6 + (i % 3) * 0.75,
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {!isAuthenticated ? (
+        <div className="flex flex-col min-h-screen w-full flex-shrink-0">
+          {heroAndNav}
+        </div>
+      ) : (
+        <>
+          {heroAndNav}
+        </>
+      )}
 
       {/* ── Difficulty legend strip ── */}
 
       {/* Divider */}
-      <div
-        className="relative z-10 mx-auto w-full max-w-6xl px-6"
-        style={{
-          height: "2px",
-          background: `linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.3), transparent)`,
-          margin: "2rem auto",
-        }}
-      />
+      {isScrollable && (
+        <div
+          className="relative z-10 mx-auto w-full max-w-6xl px-6"
+          style={{
+            height: "2px",
+            background: `linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.3), transparent)`,
+            margin: "2rem auto",
+          }}
+        />
+      )}
 
       {/* ── Authenticated sections ── */}
       {isAuthenticated && (
@@ -599,14 +636,14 @@ const Home = () => {
               <section className="space-y-8">
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center recent-activity-icon-container"
                     style={{ background: "rgba(99, 102, 241, 0.1)" }}
                   >
-                    <FiActivity className="text-accent animate-pulse" />
+                    <FiActivity className="text-accent animate-pulse recent-activity-icon" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-black">Recent Activity</h2>
-                    <p className="text-secondary text-sm">
+                    <p className="text-secondary text-sm footer-page">
                       Track your progress and updates.
                     </p>
                   </div>
@@ -617,7 +654,7 @@ const Home = () => {
                     const isAttempted = task.status === "Attempted";
                     const isRejected = task.status === "Rejected";
                     const isPending = task.status === "Pending";
-                    
+
                     const badgeText = isAttempted
                       ? "Attempted"
                       : isRejected
@@ -625,7 +662,7 @@ const Home = () => {
                         : isPending
                           ? "Pending Review"
                           : "Solved";
-                          
+
                     const badgeColor = isAttempted
                       ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
                       : isRejected
@@ -633,7 +670,7 @@ const Home = () => {
                         : isPending
                           ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"
                           : "text-green-400 bg-green-500/10 border-green-500/20";
-                          
+
                     const diffColor = isAttempted
                       ? "99, 102, 241"
                       : isRejected
@@ -756,13 +793,12 @@ const Home = () => {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <span
-                              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                                challenge.difficulty === "Easy"
-                                  ? "bg-green-500/15 text-green-400 border-green-500/25"
-                                  : challenge.difficulty === "Medium"
-                                    ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/25"
-                                    : "bg-red-500/15 text-red-400 border-red-500/25"
-                              }`}
+                              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${challenge.difficulty === "Easy"
+                                ? "bg-green-500/15 text-green-400 border-green-500/25"
+                                : challenge.difficulty === "Medium"
+                                  ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/25"
+                                  : "bg-red-500/15 text-red-400 border-red-500/25"
+                                }`}
                             >
                               {challenge.difficulty}
                             </span>
@@ -808,21 +844,7 @@ const Home = () => {
       )}
 
       {/* ── Footer ── */}
-      <footer
-        className="relative z-10 mt-auto py-6 w-full"
-        style={{
-          borderTop: `1px solid rgba(var(--accent-rgb), 0.08)`,
-          background: `rgba(var(--accent-rgb), 0.02)`,
-        }}
-      >
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Logo variant="gdg" size="w-10 h-10" imgClassName="opacity-100" />
-          <p className="text-xs text-secondary tracking-wide text-center">
-            © 2026 Algorithm Arena ·{" "}
-            <span className="text-primary font-bold">GDG On Campus – SOA ITER</span>
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

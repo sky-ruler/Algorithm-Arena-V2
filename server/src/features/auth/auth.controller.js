@@ -1,4 +1,6 @@
 const User = require('../users/User.model');
+const XpLog = require('../users/XpLog.model');
+const { awardDailyLoginXp } = require('../../../utils/dailyLoginXp');
 const RefreshToken = require('./RefreshToken.model');
 const { sendSuccess } = require('../../../utils/response');
 const { verifyGoogleToken } = require('./googleAuth');
@@ -22,6 +24,7 @@ const toAuthPayload = (user, accessToken, { isChief = false, dailyXpAwarded = fa
     username: user.username || null,
     email: user.email,
     role: user.role,
+    customTitle: user.customTitle || null,
     status: user.status,
     warningMessage: user.warningMessage || null,
     points: user.points,
@@ -41,6 +44,9 @@ const toAuthPayload = (user, accessToken, { isChief = false, dailyXpAwarded = fa
     linkedin: user.linkedin || '',
     website: user.website || '',
     preferredLanguage: user.preferredLanguage || 'javascript',
+    editorThemeDark: user.editorThemeDark || 'default',
+    editorThemeLight: user.editorThemeLight || 'default',
+    preferredTheme: user.preferredTheme || 'dark',
     createdAt: user.createdAt,
     isChief,
     dailyXpAwarded,
@@ -90,8 +96,8 @@ const googleAuth = async (req, res, next) => {
       return res.status(503).json({ success: false, message: 'Firebase Auth is not configured' });
     }
 
-    // 1. Verify Firebase ID token checking for revocation
-    const decodedToken = await firebaseAuth.verifyIdToken(idToken, true);
+    // 1. Verify Firebase ID token locally (without making an extra network request to check revocation to prevent timeouts)
+    const decodedToken = await firebaseAuth.verifyIdToken(idToken);
     const { uid, email, picture, email_verified } = decodedToken;
 
     if (!email) {
@@ -188,17 +194,10 @@ const googleAuth = async (req, res, next) => {
     }
 
     // Daily Login XP: award 50 XP if first login of the day
-    let dailyXpAwarded = false;
+    const { dailyXpAwarded, points: updatedPoints } = await awardDailyLoginXp(user);
+    user.points = updatedPoints;
+
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
-    const isFirstLoginToday = !lastLogin || lastLogin < today;
-
-    if (isFirstLoginToday && !isNewUser) {
-      user.points = (user.points || 0) + 50;
-      dailyXpAwarded = true;
-    }
-
     user.lastLoginDate = now;
     user.lastConfirmedAt = now;
     await user.save({ validateBeforeSave: false });
@@ -228,7 +227,8 @@ const googleAuth = async (req, res, next) => {
 // @access  Private
 const claimUsername = async (req, res, next) => {
   try {
-    const { username, name, regNo, branch, year, section } = req.body;
+    let { username, name, regNo, branch, year, section } = req.body;
+    if (username) username = username.toLowerCase();
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -362,7 +362,7 @@ const googleLogin = async (req, res, next) => {
         .slice(0, 15);
       if (baseUsername.length < 3) baseUsername = 'user_' + baseUsername;
 
-      let username = baseUsername;
+      let username = baseUsername.toLowerCase();
       let suffix = 1;
       while (await User.findOne({ username })) {
         username = `${baseUsername}${suffix}`;
@@ -381,18 +381,12 @@ const googleLogin = async (req, res, next) => {
     }
 
     // Daily Login XP: award 50 XP if first login of the day
-    let dailyXpAwarded = false;
+    const { dailyXpAwarded, points: updatedPoints } = await awardDailyLoginXp(user);
+    user.points = updatedPoints;
+
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
-    const isFirstLoginToday = !lastLogin || lastLogin < today;
-
-    if (isFirstLoginToday) {
-      user.points = (user.points || 0) + 50;
-      dailyXpAwarded = true;
-    }
-
     user.lastLoginDate = now;
+    user.lastConfirmedAt = now;
     await user.save({ validateBeforeSave: false });
 
     const Clan = require('../clans/Clan.model');
@@ -420,10 +414,19 @@ const refresh = async (req, res, next) => {
     }
 
     const refreshTokenHash = hashToken(refreshToken);
-    const existingToken = await RefreshToken.findOne({
+    let existingToken = await RefreshToken.findOne({
       tokenHash: refreshTokenHash,
       revokedAt: null,
     });
+
+    // Grace period for concurrency/multi-tab under heavy load:
+    // If token was rotated within the last 60 seconds by a concurrent request, allow session refresh instead of failing with 401.
+    if (!existingToken) {
+      existingToken = await RefreshToken.findOne({
+        tokenHash: refreshTokenHash,
+        revokedAt: { $gte: new Date(Date.now() - 60 * 1000) },
+      });
+    }
 
     if (!existingToken || existingToken.expiresAt <= new Date()) {
       clearRefreshTokenCookie(res);
@@ -521,27 +524,43 @@ const logoutAll = async (req, res, next) => {
 
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).populate('clan', 'name').lean();
+    const user = await User.findById(req.user.id).populate('clan', 'name').populate('featuredBadge').lean();
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
 
     // Daily Login XP check
-    let dailyXpAwarded = false;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
+    const { dailyXpAwarded, points } = await awardDailyLoginXp(user);
 
-    if (!lastLogin || lastLogin < today) {
-      user.points = (user.points || 0) + 50;
-      user.lastLoginDate = now;
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
+    const isFirstLoginToday = !lastLogin || lastLogin < today;
+
+    let needsUpdate = dailyXpAwarded;
+    let lastLoginDate = user.lastLoginDate;
+    let lastConfirmedAt = user.lastConfirmedAt;
+
+    if (dailyXpAwarded) {
+      lastLoginDate = now;
+    }
+
+    if (isFirstLoginToday) {
+      lastLoginDate = now;
+      lastConfirmedAt = now;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      user.points = points;
+      user.lastLoginDate = lastLoginDate;
+      user.lastConfirmedAt = lastConfirmedAt;
       await User.findByIdAndUpdate(user._id, {
-        points: user.points,
-        lastLoginDate: user.lastLoginDate,
-        lastConfirmedAt: now
+        points,
+        lastLoginDate,
+        lastConfirmedAt
       });
-      dailyXpAwarded = true;
     }
 
     // Check if user is a chief of any clan
@@ -562,7 +581,26 @@ const getMe = async (req, res, next) => {
 
 const updateMe = async (req, res, next) => {
   try {
-    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture, preferredLanguage } = req.body;
+    const { bio, branch, year, section, location, github, twitter, linkedin, website, profilePicture, preferredLanguage, editorThemeDark, editorThemeLight, preferredTheme } = req.body;
+
+    // Normalize URLs: prepend https:// if the value looks like a URL but has no protocol
+    const normalizeUrl = (val) => {
+      if (!val || typeof val !== 'string') return val;
+      const trimmed = val.trim();
+      if (!trimmed) return trimmed;
+      // If it already has a protocol, leave it alone
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      // If it looks like a domain/path (contains a dot or slash), prepend https://
+      if (/[.\/]/.test(trimmed)) return `https://${trimmed}`;
+      return trimmed;
+    };
+
+    const cleanEnumField = (val, defaultValue) => {
+      if (!val || val === '' || val === 'undefined' || val === 'null') {
+        return defaultValue;
+      }
+      return val;
+    };
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -573,12 +611,15 @@ const updateMe = async (req, res, next) => {
           year,
           section,
           location,
-          github,
-          twitter,
-          linkedin,
-          website,
+          github: normalizeUrl(github),
+          twitter: normalizeUrl(twitter),
+          linkedin: normalizeUrl(linkedin),
+          website: normalizeUrl(website),
           profilePicture,
-          preferredLanguage
+          preferredLanguage: cleanEnumField(preferredLanguage, 'javascript'),
+          editorThemeDark: cleanEnumField(editorThemeDark, 'default'),
+          editorThemeLight: cleanEnumField(editorThemeLight, 'default'),
+          preferredTheme: cleanEnumField(preferredTheme, 'dark'),
         }
       },
       { new: true, runValidators: true }

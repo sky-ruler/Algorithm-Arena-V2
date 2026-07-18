@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiUser, FiCheck, FiX, FiArrowRight, FiLoader, FiFileText, FiHash, FiBookOpen, FiClock, FiGrid } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -6,7 +6,9 @@ import Card from '../components/Card';
 import PixelBlast from '../components/PixelBlast';
 import { api } from '../lib/api';
 import { useAuth } from '../context/useAuth';
+import { SocketContext } from '../context/socketContext';
 import Logo from '../components/Logo';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../components/ui/select';
 const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
 const REGNO_REGEX = /^[a-zA-Z0-9]{6,20}$/;
 
@@ -23,6 +25,7 @@ const ClaimUsername = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
+  const socket = useContext(SocketContext);
 
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -77,17 +80,29 @@ const ClaimUsername = () => {
 
     setAvailability('checking');
 
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get(`/api/auth/check-username/${encodeURIComponent(username)}`);
-        setAvailability(res.data?.available ? 'available' : 'taken');
-      } catch {
-        setAvailability('invalid');
+    const timer = setTimeout(() => {
+      if (socket && socket.connected) {
+        socket.emit('check_username', username, (res) => {
+          if (res && res.success) {
+            setAvailability(res.available ? 'available' : 'taken');
+          } else {
+            setAvailability('invalid');
+          }
+        });
+      } else {
+        // Fallback to HTTP
+        api.get(`/api/auth/check-username/${encodeURIComponent(username)}`)
+          .then((res) => {
+            setAvailability(res.data?.available ? 'available' : 'taken');
+          })
+          .catch(() => {
+            setAvailability('invalid');
+          });
       }
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [username, usernameError]);
+  }, [username, usernameError, socket]);
 
   const isFormValid = useMemo(() => {
     return (
@@ -134,7 +149,12 @@ const ClaimUsername = () => {
       toast.success(`Welcome, Pilot ${username}! 🚀`);
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      const message = err.userMessage || err?.response?.data?.message || 'Failed to complete onboarding';
+      let message = err.userMessage || err?.response?.data?.message || 'Failed to complete onboarding';
+      
+      if (err?.response?.data?.errors?.length > 0) {
+        message = err.response.data.errors.map(e => e.message).join(' • ');
+      }
+
       setError(message);
       toast.error(message);
       if (err?.response?.status === 409 && message.toLowerCase().includes('username')) {
@@ -219,7 +239,7 @@ const ClaimUsername = () => {
                   <input
                     type="text"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value.trim())}
+                    onChange={(e) => setUsername(e.target.value.trim().toLowerCase())}
                     className="w-full bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-12 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-tertiary"
                     placeholder="e.g. Neo_42"
                     maxLength={30}
@@ -228,7 +248,7 @@ const ClaimUsername = () => {
                     {statusIcon()}
                   </div>
                 </div>
-                <div className="h-4 pl-1">
+                <div className="min-h-[1.25rem] pl-1 mt-0.5">
                   {usernameStatusMessage()}
                 </div>
               </div>
@@ -273,17 +293,63 @@ const ClaimUsername = () => {
                 <label className="field-label">Branch</label>
                 <div className="relative group">
                   <FiBookOpen className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors z-10" />
-                  <select
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    className="w-full bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all appearance-none"
-                  >
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="">Select Branch</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech CSE">B.Tech CSE</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech ECE">B.Tech ECE</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="B.Tech EEE">B.Tech EEE</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="MCA">MCA</option>
-                  </select>
+                  <Select value={branch} onValueChange={setBranch}>
+                    <SelectTrigger className="w-full h-[50px] bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all">
+                      <SelectValue placeholder="Select Branch/Domain" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Engineering & Technology</SelectLabel>
+                        <SelectItem value="B.Tech CSE">B.Tech CSE</SelectItem>
+                        <SelectItem value="B.Tech CSIT">B.Tech CSIT</SelectItem>
+                        <SelectItem value="B.Tech IT">B.Tech IT</SelectItem>
+                        <SelectItem value="B.Tech ECE">B.Tech ECE</SelectItem>
+                        <SelectItem value="B.Tech EE">B.Tech EE</SelectItem>
+                        <SelectItem value="B.Tech EEE">B.Tech EEE</SelectItem>
+                        <SelectItem value="B.Tech Mechanical">B.Tech Mechanical</SelectItem>
+                        <SelectItem value="B.Tech Civil">B.Tech Civil</SelectItem>
+                        <SelectItem value="M.Tech">M.Tech</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Computer Applications</SelectLabel>
+                        <SelectItem value="BCA">BCA</SelectItem>
+                        <SelectItem value="MCA">MCA</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Medical & Health Sciences</SelectLabel>
+                        <SelectItem value="MBBS">MBBS</SelectItem>
+                        <SelectItem value="BDS (Dental)">BDS (Dental)</SelectItem>
+                        <SelectItem value="B.Pharm (Pharmacy)">B.Pharm (Pharmacy)</SelectItem>
+                        <SelectItem value="B.Sc Nursing">B.Sc Nursing</SelectItem>
+                        <SelectItem value="MD / MS">MD / MS</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Law</SelectLabel>
+                        <SelectItem value="BA LLB / BBA LLB">BA LLB / BBA LLB</SelectItem>
+                        <SelectItem value="LLB">LLB</SelectItem>
+                        <SelectItem value="LLM">LLM</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Management & Commerce</SelectLabel>
+                        <SelectItem value="BBA">BBA</SelectItem>
+                        <SelectItem value="MBA">MBA</SelectItem>
+                        <SelectItem value="B.Com">B.Com</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Agriculture & Sciences</SelectLabel>
+                        <SelectItem value="B.Sc Agriculture">B.Sc Agriculture</SelectItem>
+                        <SelectItem value="B.Sc Biotech">B.Sc Biotech</SelectItem>
+                        <SelectItem value="B.Sc (Hons)">B.Sc (Hons)</SelectItem>
+                        <SelectItem value="M.Sc">M.Sc</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Other Domains</SelectLabel>
+                        <SelectItem value="BHMCT (Hotel Management)">BHMCT (Hotel Management)</SelectItem>
+                        <SelectItem value="BA (Hons)">BA (Hons)</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -292,17 +358,17 @@ const ClaimUsername = () => {
                 <label className="field-label">Academic Year</label>
                 <div className="relative group">
                   <FiClock className="absolute left-4 top-3.5 text-secondary group-focus-within:text-accent transition-colors z-10" />
-                  <select
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
-                    className="w-full bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all appearance-none"
-                  >
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="">Select Year</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="First Year">First Year</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Second Year">Second Year</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Third Year">Third Year</option>
-                    <option className="bg-white dark:bg-[#0f111a] text-black dark:text-white" value="Fourth Year">Fourth Year</option>
-                  </select>
+                  <Select value={year} onValueChange={setYear}>
+                    <SelectTrigger className="w-full h-[50px] bg-white/80 dark:bg-white/[0.06] border border-glass-border rounded-xl py-3 pl-11 pr-4 text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all">
+                      <SelectValue placeholder="Select Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="First Year">First Year</SelectItem>
+                      <SelectItem value="Second Year">Second Year</SelectItem>
+                      <SelectItem value="Third Year">Third Year</SelectItem>
+                      <SelectItem value="Fourth Year">Fourth Year</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

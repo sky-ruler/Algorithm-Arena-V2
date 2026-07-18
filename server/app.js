@@ -13,6 +13,43 @@ const { env } = require('./config/env');
 const { logger } = require('./utils/logger');
 const { requestContext } = require('./middleware/requestContext');
 
+const mongoose = require('mongoose');
+mongoose.plugin((schema) => {
+  const transformFn = (doc, ret, options) => {
+    delete ret.__v;
+    delete ret.updatedAt;
+    const modelName = doc.constructor?.modelName;
+    if (modelName && ['Clan', 'Badge', 'Submission', 'XpLog'].includes(modelName)) {
+      delete ret.createdAt;
+    }
+    return ret;
+  };
+
+  const existingToJSON = schema.get('toJSON') || {};
+  schema.set('toJSON', {
+    ...existingToJSON,
+    transform: (doc, ret, options) => {
+      let result = ret;
+      if (typeof existingToJSON.transform === 'function') {
+        result = existingToJSON.transform(doc, ret, options);
+      }
+      return transformFn(doc, result, options);
+    }
+  });
+
+  const existingToObject = schema.get('toObject') || {};
+  schema.set('toObject', {
+    ...existingToObject,
+    transform: (doc, ret, options) => {
+      let result = ret;
+      if (typeof existingToObject.transform === 'function') {
+        result = existingToObject.transform(doc, ret, options);
+      }
+      return transformFn(doc, result, options);
+    }
+  });
+});
+
 const authRoutes = require('./src/features/auth/auth.routes');
 const challengeRoutes = require('./src/features/challenges/challenge.routes');
 const questionSetRoutes = require('./src/features/challenges/questionSet.routes');
@@ -33,16 +70,17 @@ try {
 
 const createApp = () => {
   const app = express();
+  app.set('trust proxy', 1);
   const isNonProductionEnv = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 
   // Keep Render keepalive traffic as cheap as possible by bypassing the
   // standard middleware chain and returning immediately.
-   app.get('/', (_req, res) => {
-  return res.status(200).json({
-    success: true,
-    message: 'Algorithm Arena API is running'
+  app.get('/', (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      message: 'Algorithm Arena API is running'
+    });
   });
-});
   app.get('/ping', (_req, res) => {
     return res.status(200).json({ ok: true });
   });
@@ -50,6 +88,7 @@ const createApp = () => {
   app.use(requestContext);
   app.use(
     helmet({
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
@@ -69,8 +108,9 @@ const createApp = () => {
     cors({
       origin(origin, callback) {
         if (!origin) return callback(null, true);
-        if (env.CORS_ORIGINS.includes(origin)) return callback(null, true);
-        return callback(new Error('CORS origin not allowed'));
+        const cleanOrigin = origin.replace(/\/$/, '');
+        if (env.CORS_ORIGINS.includes(cleanOrigin)) return callback(null, true);
+        return callback(new Error(`CORS origin not allowed: ${origin}`));
       },
       credentials: true,
     })
@@ -83,7 +123,7 @@ const createApp = () => {
 
   const apiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: isNonProductionEnv ? 1000 : 200,
+    max: isNonProductionEnv ? 2000 : 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many requests, please try again later.' },
@@ -93,7 +133,7 @@ const createApp = () => {
   // Stricter limiter for auth endpoints to prevent brute-force attacks
   const authLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: isNonProductionEnv ? 200 : 10,
+    max: isNonProductionEnv ? 200 : 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many authentication attempts, please try again later.' },
@@ -175,3 +215,4 @@ const createApp = () => {
 };
 
 module.exports = { createApp };
+// deploy test Sun Jul  5 16:40:12 IST 2026

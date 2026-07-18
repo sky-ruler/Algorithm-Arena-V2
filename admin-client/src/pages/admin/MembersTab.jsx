@@ -9,8 +9,6 @@ import { useAuth } from '../../context/useAuth';
 import { canManageClanGlobally } from '../../lib/permissions';
 import toast from 'react-hot-toast';
 
-import { USE_MOCK } from '../../lib/mockData';
-
 const MembersTab = ({ initialClanFilter }) => {
   const queryClient = useQueryClient();
   const { user, confirmSessionIfNeeded } = useAuth();
@@ -55,8 +53,7 @@ const MembersTab = ({ initialClanFilter }) => {
     queryKey: ['admin-all-users'],
     queryFn: async () => {
       try {
-        if (USE_MOCK) return [];
-        const res = await api.get('/api/users');
+        const res = await api.get('/api/users?limit=10000');
         return res.data.data || [];
       } catch (err) {
         console.warn("Failed to fetch users.", err);
@@ -98,6 +95,7 @@ const MembersTab = ({ initialClanFilter }) => {
       toast.error(err.response?.data?.message || "Failed to assign chief");
     }
   });
+
 
   const banUserMutation = useMutation({
     mutationFn: async (userId) => {
@@ -142,6 +140,20 @@ const MembersTab = ({ initialClanFilter }) => {
     }
   });
 
+  const removeWarnMutation = useMutation({
+    mutationFn: async (userId) => {
+      return api.delete(`/api/users/${userId}/warn`);
+    },
+    onSuccess: () => {
+      toast.success("Warning removed successfully");
+      queryClient.invalidateQueries({ queryKey: ['admin-all-users'] });
+      setMenuOpen(null);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Failed to remove warning");
+    }
+  });
+
   const handleRoleChange = async (targetUser, role) => {
     if (!canManageUsers) return;
 
@@ -159,7 +171,8 @@ const MembersTab = ({ initialClanFilter }) => {
 
   // Filter users
   const filteredUsers = (usersQuery.data || []).filter(u => {
-    if (u.role === 'admin' || u.role === 'superAdmin') return false;
+    if (u.role === 'superAdmin') return false;
+    if (u.role === 'admin' && user?.role !== 'superAdmin') return false;
     
     const s = search.toLowerCase();
     const matchSearch = (u.username || '').toLowerCase().includes(s) || 
@@ -167,10 +180,12 @@ const MembersTab = ({ initialClanFilter }) => {
                         (u.email && u.email.toLowerCase().includes(s));
     const matchLevel = levelFilter ? u.codingLevel === levelFilter : true;
     let matchClan = true;
+    const activeClan = u.clan ? (clansQuery.data || []).find(c => c._id === u.clan || c._id === u.clan?._id) : null;
+    
     if (clanFilter === 'unassigned') {
-      matchClan = !u.clan;
+      matchClan = !activeClan;
     } else if (clanFilter) {
-      matchClan = u.clan?._id === clanFilter || u.clan === clanFilter;
+      matchClan = activeClan?._id === clanFilter;
     }
 
     const solved = u.solvedProblems || 0;
@@ -241,27 +256,27 @@ const MembersTab = ({ initialClanFilter }) => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row justify-between gap-4">
-        <h2 className="text-section-title font-bold flex items-center gap-2"><FiUsers className="text-green-400" /> Member Directory</h2>
+        <h2 className="text-section-title text-black dark:text-white font-bold flex items-center gap-2"><FiUsers className="text-green-600 dark:text-green-400" /> Member Directory</h2>
         
         <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="relative flex-1">
-          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-tertiary" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name or Reg No..."
-            className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
+            className="w-full bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-black dark:text-white focus:outline-none focus:border-blue-500/50 transition-colors"
           />
         </div>
 
         <div className="flex gap-2">
           <div className="relative">
-            <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
+            <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-tertiary" />
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value)}
-              className="bg-black/20 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm text-white appearance-none focus:outline-none focus:border-blue-500/50"
+              className="bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm text-black dark:text-white appearance-none focus:outline-none focus:border-blue-500/50"
             >
               <option value="">All Levels</option>
               <option value="Beginner">Beginner</option>
@@ -271,11 +286,11 @@ const MembersTab = ({ initialClanFilter }) => {
           </div>
 
           <div className="relative">
-            <FiUsers className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
+            <FiUsers className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-tertiary" />
             <select
               value={clanFilter}
               onChange={(e) => setClanFilter(e.target.value)}
-              className="bg-black/20 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm text-white appearance-none focus:outline-none focus:border-blue-500/50"
+              className="bg-white dark:bg-black/20 border border-black/10 dark:border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm text-black dark:text-white appearance-none focus:outline-none focus:border-blue-500/50"
             >
               <option value="">All Clans</option>
               <option value="unassigned">Unassigned</option>
@@ -432,17 +447,23 @@ const MembersTab = ({ initialClanFilter }) => {
                         <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center font-black transition-colors">
                           {(user.username?.[0] || user.email?.[0] || 'U').toUpperCase()}
                         </div>
-                        <span className="transition-colors">{user.username || user.email || 'Onboarding Pending'}</span>
+                        <span className="transition-colors text-black dark:text-white">{user.username || user.email || 'Onboarding Pending'}</span>
+                        {user.role === 'clan-chief' && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30">
+                            Chief
+                          </span>
+                        )}
                       </div>
                     </MemberHoverCard>
                   </td>
                   <td className="p-4 text-sm text-secondary font-mono">{user.regNo || '---'}</td>
                   <td className="p-4 text-sm">
-                    {user.clan ? (
-                      <span className="text-secondary">{clansQuery.data?.find(c => c._id === user.clan || c._id === user.clan?._id)?.name || 'Unknown'}</span>
-                    ) : (
-                      <span className="text-tertiary italic">Unassigned</span>
-                    )}
+                    {(() => {
+                      if (!user.clan) return <span className="text-tertiary italic">Unassigned</span>;
+                      const activeClan = clansQuery.data?.find(c => c._id === user.clan || c._id === user.clan?._id);
+                      if (activeClan) return <span className="text-secondary">{activeClan.name}</span>;
+                      return <span className="text-tertiary italic">Unassigned</span>;
+                    })()}
                   </td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded text-[10px] font-bold border uppercase tracking-widest ${getLevelColor(user.codingLevel)}`}>
@@ -552,6 +573,27 @@ const MembersTab = ({ initialClanFilter }) => {
                         className="w-full text-left px-3 py-2 text-sm text-secondary hover:text-white hover:bg-white/5 rounded flex items-center gap-2 disabled:opacity-50"
                       >
                         <FiUserCheck className="text-green-400" /> Make Member
+                      </button>
+                    )}
+                    {menuUser.role === 'admin' && user?.role === 'superAdmin' && (
+                      <button
+                        onClick={() => handleRoleChange(menuUser, 'user')}
+                        disabled={!canManageUsers}
+                        className="w-full text-left px-3 py-2 text-sm text-secondary hover:text-white hover:bg-white/5 rounded flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <FiUserCheck className="text-green-400" /> Revoke Admin & Make Member
+                      </button>
+                    )}
+                    {menuUser.status === 'Warned' && (
+                      <button
+                        onClick={() => {
+                          if (!canManageUsers) return;
+                          removeWarnMutation.mutate(menuUser._id);
+                        }}
+                        disabled={!canManageUsers || removeWarnMutation.isPending}
+                        className="w-full text-left px-3 py-2 text-sm text-green-400 hover:text-green-300 hover:bg-green-500/10 rounded flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <FiUserCheck /> Remove Warning
                       </button>
                     )}
                     <div className="h-px bg-white/10 my-1 mx-2" />
