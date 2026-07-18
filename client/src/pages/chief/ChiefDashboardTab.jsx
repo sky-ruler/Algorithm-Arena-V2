@@ -181,8 +181,9 @@ const ChiefDashboardTab = ({ clan, onTabChange }) => {
 
   const filteredMembers = members.filter(member => {
     if (filterType === 'All') return true;
-    const solved = Math.min(member.weeklySolved || 0, TARGET_PROBLEMS);
-    const total = TARGET_PROBLEMS;
+    const setData = selectedMembers[member._id];
+    const solved = setData?.solved ?? 0;
+    const total = setData?.total ?? (selectedSet?.challengeCount ?? 0);
     if (filterType === 'Completed') return total > 0 && solved === total;
     if (filterType === 'In Progress') return solved > 0 && solved < total;
     if (filterType === 'Not Started') return solved === 0;
@@ -192,8 +193,9 @@ const ChiefDashboardTab = ({ clan, onTabChange }) => {
   const handleDownloadCSV = () => {
     const headers = ['Name', 'Username', 'Email', 'Level', 'XP', 'Solved', 'Total', 'Status'];
     const rows = filteredMembers.map(member => {
-      const solved = Math.min(member.weeklySolved || 0, TARGET_PROBLEMS);
-      const total = TARGET_PROBLEMS;
+      const setData = selectedMembers[member._id];
+      const solved = setData?.solved ?? 0;
+      const total = setData?.total ?? (selectedSet?.challengeCount ?? 0);
       let status = 'Not Started';
       if (total > 0 && solved === total) status = 'Completed';
       else if (solved > 0) status = 'In Progress';
