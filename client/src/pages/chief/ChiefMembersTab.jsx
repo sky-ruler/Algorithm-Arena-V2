@@ -19,6 +19,9 @@ const ChiefMembersTab = ({ clan }) => {
   const [warnMessage, setWarnMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [minSolved, setMinSolved] = useState('');
+  const [maxSolved, setMaxSolved] = useState('');
+  const [sortBy, setSortBy] = useState('Default');
   const isArchived = isClanArchived(clan);
   const canManageMembers = canManageClanMembers(currentUser, clan);
   const canManageClan = canManageOwnClan(currentUser, clan);
@@ -104,29 +107,85 @@ const ChiefMembersTab = ({ clan }) => {
                           (member.regNo && member.regNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           (member.email && member.email.toLowerCase().includes(searchTerm.toLowerCase()));
     const memberStatus = member.status || 'Active';
-    if (statusFilter === 'All') return matchesSearch;
-    return matchesSearch && memberStatus === statusFilter;
+    const statusMatch = statusFilter === 'All' ? true : memberStatus === statusFilter;
+    
+    const solved = member.solvedProblems || 0;
+    const matchesMin = minSolved === '' || solved >= parseInt(minSolved);
+    const matchesMax = maxSolved === '' || solved <= parseInt(maxSolved);
+    
+    return matchesSearch && statusMatch && matchesMin && matchesMax;
   });
+
+  const sortedMembers = [...filteredMembers].sort((a, b) => {
+    const aSolved = a.solvedProblems || 0;
+    const bSolved = b.solvedProblems || 0;
+    if (sortBy === 'Solved (Low to High)') return aSolved - bSolved;
+    if (sortBy === 'Solved (High to Low)') return bSolved - aSolved;
+    return 0; // Default
+  });
+
+  const handleDownloadCSV = () => {
+    const headers = ['Name', 'Username', 'Email', 'Reg No', 'Level', 'Solved', 'XP', 'Streak', 'Status'];
+    const rows = sortedMembers.map(user => {
+      const isWarned = user.status === 'Warned';
+      const isInactive = user.status === 'Inactive';
+      const status = isWarned ? 'Warned' : isInactive ? 'Inactive' : 'Active';
+      
+      return [
+        `"${user.name || user.username || ''}"`,
+        `"${user.username || ''}"`,
+        `"${user.email || ''}"`,
+        `"${user.regNo || 'N/A'}"`,
+        `"${user.codingLevel || 'Beginner'}"`,
+        user.solvedProblems || 0,
+        user.points || 0,
+        user.streak || 0,
+        `"${status}"`
+      ].join(',');
+    });
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Member_Management_${clan.name?.replace(/\s+/g, '_') || 'Clan'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-section-title font-bold flex items-center gap-2">
-          <FiUsers className="text-blue-400" /> Member Management
-        </h2>
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-64">
-            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
-            <input 
-              type="text" 
-              placeholder="Search by name or reg no..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="field-input pl-10 h-10 text-sm w-full"
-            />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h2 className="text-section-title font-bold flex items-center gap-2">
+            <FiUsers className="text-blue-400" /> Member Management
+          </h2>
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <div className="relative w-full md:w-64">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
+              <input 
+                type="text" 
+                placeholder="Search by name or reg no..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="field-input pl-10 h-10 text-sm w-full"
+              />
+            </div>
+            
+            <button 
+              onClick={handleDownloadCSV}
+              className="px-4 py-2 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors text-sm font-bold border border-blue-500/20 whitespace-nowrap"
+            >
+              Export CSV
+            </button>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 bg-black/20 p-3 rounded-xl border border-white/5">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="field-select h-10 text-sm w-[135px] flex items-center justify-between">
+            <SelectTrigger className="field-select h-10 text-sm w-[135px] flex items-center justify-between bg-black/40">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
@@ -134,6 +193,36 @@ const ChiefMembersTab = ({ clan }) => {
               <SelectItem value="Active">Active</SelectItem>
               <SelectItem value="Inactive">Inactive</SelectItem>
               <SelectItem value="Warned">Warned</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-2 px-2 py-1 bg-black/40 rounded-lg border border-white/10">
+            <span className="text-xs text-tertiary font-bold uppercase">Solved:</span>
+            <input 
+              type="number" 
+              placeholder="Min" 
+              value={minSolved}
+              onChange={e => setMinSolved(e.target.value)}
+              className="w-16 h-8 bg-transparent text-sm text-primary text-center focus:outline-none border-b border-transparent focus:border-accent"
+            />
+            <span className="text-tertiary">-</span>
+            <input 
+              type="number" 
+              placeholder="Max" 
+              value={maxSolved}
+              onChange={e => setMaxSolved(e.target.value)}
+              className="w-16 h-8 bg-transparent text-sm text-primary text-center focus:outline-none border-b border-transparent focus:border-accent"
+            />
+          </div>
+
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="field-select h-10 text-sm w-[180px] flex items-center justify-between bg-black/40">
+              <SelectValue placeholder="Sort By" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Default">Sort: Default</SelectItem>
+              <SelectItem value="Solved (Low to High)">Solved (Low to High)</SelectItem>
+              <SelectItem value="Solved (High to Low)">Solved (High to Low)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -153,7 +242,7 @@ const ChiefMembersTab = ({ clan }) => {
             </tr>
           </thead>
           <tbody>
-            {filteredMembers.map((user, i) => {
+            {sortedMembers.map((user, i) => {
               const isWarned = user.status === 'Warned';
               const isInactive = user.status === 'Inactive';
               const isActive = !isWarned && !isInactive;
@@ -274,7 +363,7 @@ const ChiefMembersTab = ({ clan }) => {
                 </motion.tr>
               );
             })}
-            {filteredMembers.length === 0 && (
+            {sortedMembers.length === 0 && (
               <tr>
                 <td colSpan="7" className="p-8 text-center text-tertiary text-sm">
                   No members found matching your filters.

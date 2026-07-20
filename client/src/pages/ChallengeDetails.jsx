@@ -228,6 +228,7 @@ const ChallengeDetails = () => {
 
   // Logic: LocalStorage Persistence
   useEffect(() => {
+    if (isReviewMode) return;
     const raw = localStorage.getItem(draftKey);
     if (!raw) return;
     try {
@@ -240,7 +241,7 @@ const ChallengeDetails = () => {
     } catch {
       localStorage.removeItem(draftKey);
     }
-  }, [draftKey]);
+  }, [draftKey, isReviewMode]);
 
   const challengeQuery = useQuery({
     queryKey: ["challenge", id],
@@ -259,6 +260,7 @@ const ChallengeDetails = () => {
   });
 
   useEffect(() => {
+    if (isReviewMode) return;
     const hasAnyCode = Object.values(codeByLang).some((c) => c.trim());
     if (!(repoUrl.trim() || hasAnyCode)) {
       localStorage.removeItem(draftKey);
@@ -277,7 +279,7 @@ const ChallengeDetails = () => {
         updatedAt: new Date().toISOString(),
       }),
     );
-  }, [draftKey, repoUrl, codeByLang, language, challengeQuery.data]);
+  }, [draftKey, repoUrl, codeByLang, language, challengeQuery.data, isReviewMode]);
 
   // A language is offered only if this challenge can actually run in it.
   // Python/JS drivers are dynamic; compiled languages need a drivable signature.
