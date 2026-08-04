@@ -24,7 +24,9 @@ const getChallenges = async (req, res, next) => {
 
     const safeLimit = Math.min(Number(limit) || 10, 100);
 
-    const filter = {};
+    // Only DSA challenges belong in the generic browse (dashboard, missions). Domain
+    // questions live in the standalone Interview Prep pool and are fetched via /domain.
+    const filter = { type: 'dsa' };
     const andConditions = [];
 
     if (setId) filter.questionSetId = setId;
@@ -188,6 +190,18 @@ const getChallengeById = async (req, res, next) => {
     if (!challenge) {
       res.status(404);
       throw new Error('Challenge not found');
+    }
+
+    // Never expose a domain question's answer key through the generic endpoint to
+    // non-admins. Participants read domain questions via /domain/:id (also stripped).
+    const isAdmin = ['admin', 'superAdmin', 'super-admin'].includes(req.user?.role);
+    if (challenge.type && challenge.type !== 'dsa' && !isAdmin) {
+      const safe = challenge.toObject();
+      delete safe.correctOption;
+      delete safe.modelAnswer;
+      delete safe.explanation;
+      delete safe.solutions;
+      return sendSuccess(res, { data: safe });
     }
 
     return sendSuccess(res, { data: challenge });
@@ -400,8 +414,220 @@ const getLeetCodeDetails = async (req, res, next) => {
   }
 };
 
+// Participant-facing browse of the standalone domain-question pool, filtered by tags and
+// joined with the caller's mastery state. Selects only safe fields so answer keys
+// (correctOption, explanation, modelAnswer, solutions) never reach the client.
+const browseDomainPool = async (req, res, next) => {
+  try {
+    const DomainProgress = require('./DomainProgress.model');
+    const { tags, type } = req.query;
+
+    const filter = { type: { $in: ['mcq', 'written'] } };
+    if (type === 'mcq' || type === 'written') filter.type = type;
+    if (tags) {
+      const tagList = String(tags).split(',').map((t) => t.trim()).filter(Boolean);
+      if (tagList.length) {
+        filter.tags = { $in: tagList.map((t) => new RegExp(`^${t}$`, 'i')) };
+      }
+    }
+
+    const challenges = await Challenge.find(filter)
+      .select('title description type difficulty points category subject tags options createdAt')
+      .lean();
+
+    const progresses = await DomainProgress.find({
+      userId: req.user.id,
+      challengeId: { $in: challenges.map((c) => c._id) },
+    }).lean();
+    const byId = new Map(progresses.map((p) => [String(p.challengeId), p]));
+
+    const now = new Date();
+    const items = challenges.map((c) => {
+      const p = byId.get(String(c._id));
+      return {
+        ...c,
+        masteryStatus: p?.status || 'Unattempted',
+        nextAttemptAt: p?.nextAttemptAt || null,
+        locked: p?.nextAttemptAt ? p.nextAttemptAt > now : false,
+      };
+    });
+
+    return sendSuccess(res, { data: { items } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Full domain-question documents (incl. answer keys) for the admin management list.
+const getDomainQuestionsForAdmin = async (req, res, next) => {
+  try {
+    const items = await Challenge.find({ type: { $in: ['mcq', 'written'] } })
+      .sort({ createdAt: -1 })
+      .lean();
+    return sendSuccess(res, { data: { items } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// A single domain question for the participant solve page — stripped of answer keys and
+// joined with the caller's mastery state. Cannot resolve a DSA challenge.
+const getDomainQuestionById = async (req, res, next) => {
+  try {
+    const DomainProgress = require('./DomainProgress.model');
+    const challenge = await Challenge.findOne({ _id: req.params.id, type: { $in: ['mcq', 'written'] } })
+      .select('title description type difficulty points category subject tags options createdAt')
+      .lean();
+    if (!challenge) {
+      res.status(404);
+      throw new Error('Question not found');
+    }
+    const progress = await DomainProgress.findOne({ userId: req.user.id, challengeId: challenge._id }).lean();
+    const now = new Date();
+    return sendSuccess(res, {
+      data: {
+        ...challenge,
+        masteryStatus: progress?.status || 'Unattempted',
+        nextAttemptAt: progress?.nextAttemptAt || null,
+        locked: progress?.nextAttemptAt ? progress.nextAttemptAt > now : false,
+        selfAssessment: progress?.selfAssessment || null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// A participant's self-assessment of a written domain answer after seeing the model answer.
+// Drives the mastery bucket and cooldown only — never points. Mastery transitions maintain
+// the separate domainMastered counter.
+const selfAssessDomain = async (req, res, next) => {
+  try {
+    const DomainProgress = require('./DomainProgress.model');
+    const { nextAttemptAt } = require('../../../utils/domainScoring');
+    const User = require('../users/User.model');
+    const { challengeId, gotIt } = req.body;
+
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge || challenge.type !== 'written') {
+      res.status(404);
+      throw new Error('Written question not found');
+    }
+
+    const existing = await DomainProgress.findOne({ userId: req.user.id, challengeId });
+    const wasMastered = existing?.status === 'Mastered';
+
+    let update;
+    if (gotIt) {
+      update = { type: 'written', status: 'Mastered', nextAttemptAt: null, selfAssessment: 'gotIt' };
+    } else {
+      const attempt = (existing?.attempts || 0) + 1;
+      update = {
+        type: 'written',
+        status: 'NeedsReview',
+        selfAssessment: 'reviewLater',
+        attempts: attempt,
+        nextAttemptAt: nextAttemptAt(challenge.points || 0, attempt),
+      };
+    }
+
+    await DomainProgress.findOneAndUpdate(
+      { userId: req.user.id, challengeId },
+      { $set: update },
+      { upsert: true }
+    );
+
+    if (gotIt && !wasMastered) {
+      await User.findByIdAndUpdate(req.user.id, { $inc: { domainMastered: 1 } });
+    } else if (!gotIt && wasMastered) {
+      await User.findByIdAndUpdate(req.user.id, { $inc: { domainMastered: -1 } });
+    }
+
+    return sendSuccess(res, { data: { status: update.status, nextAttemptAt: update.nextAttemptAt || null } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Bulk-create domain questions from a JSON array. Each entry is validated independently
+// so valid rows are inserted and invalid ones are reported without failing the batch.
+const bulkCreateDomainQuestions = async (req, res, next) => {
+  try {
+    const { domainQuestionObject } = require('../../../validators/challengeSchemas');
+    const entries = Array.isArray(req.body) ? req.body : req.body?.questions;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      res.status(400);
+      throw new Error('Provide a non-empty "questions" array');
+    }
+
+    const createdIds = [];
+    const failures = [];
+
+    for (let i = 0; i < entries.length; i += 1) {
+      const parsed = domainQuestionObject.safeParse(entries[i]);
+      if (!parsed.success) {
+        failures.push({
+          index: i,
+          errors: parsed.error.issues.map((is) => ({ path: is.path.join('.'), message: is.message })),
+        });
+        continue;
+      }
+      const data = parsed.data;
+      if (data.points == null) data.points = getPointsForDifficulty(data.difficulty);
+      const doc = await Challenge.create(data);
+      createdIds.push(doc._id);
+    }
+
+    return sendSuccess(res, {
+      statusCode: createdIds.length > 0 ? 201 : 400,
+      data: { createdCount: createdIds.length, createdIds, failures },
+      message: `Created ${createdIds.length} question(s), ${failures.length} failed`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// The caller's domain questions that are due for review: NeedsReview and off cooldown.
+// Powers the dashboard reminder widget and nav badge (pull-based, no push).
+const getDueForReview = async (req, res, next) => {
+  try {
+    const DomainProgress = require('./DomainProgress.model');
+
+    const due = await DomainProgress.find({
+      userId: req.user.id,
+      status: 'NeedsReview',
+      nextAttemptAt: { $lte: new Date() },
+    })
+      .populate('challengeId', 'title type tags difficulty')
+      .sort({ nextAttemptAt: 1 })
+      .lean();
+
+    const items = due
+      .filter((p) => p.challengeId) // skip any orphaned progress
+      .map((p) => ({
+        _id: p.challengeId._id,
+        title: p.challengeId.title,
+        type: p.challengeId.type,
+        tags: p.challengeId.tags,
+        difficulty: p.challengeId.difficulty,
+        nextAttemptAt: p.nextAttemptAt,
+      }));
+
+    return sendSuccess(res, { data: { count: items.length, items } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getChallenges,
+  browseDomainPool,
+  selfAssessDomain,
+  bulkCreateDomainQuestions,
+  getDueForReview,
+  getDomainQuestionsForAdmin,
+  getDomainQuestionById,
   getChallengeById,
   createChallenge,
   updateChallenge,

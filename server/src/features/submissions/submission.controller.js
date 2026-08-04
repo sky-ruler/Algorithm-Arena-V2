@@ -130,7 +130,9 @@ const getSubmissions = async (req, res, next) => {
       Submission.countDocuments(filter),
       Submission.find(filter)
         .populate('userId', 'username email role clan')
-        .populate('challengeId', 'title difficulty points')
+        // type + modelAnswer let the reviewer queue render written domain answers inline;
+        // this endpoint is chief/admin-only, so the model answer is not exposed to participants.
+        .populate('challengeId', 'title difficulty points type modelAnswer')
         .populate('reviewedBy', 'username role')
         .sort(sort)
         .skip(skip)
@@ -455,7 +457,7 @@ const updateSubmissionStatus = async (req, res, next) => {
       { new: true, runValidators: true }
     )
       .populate('userId', 'username email role points solvedProblems')
-      .populate('challengeId', 'title difficulty points')
+      .populate('challengeId', 'title difficulty points type')
       .populate('reviewedBy', 'username role');
 
     await logAudit({
@@ -491,22 +493,29 @@ const updateSubmissionStatus = async (req, res, next) => {
       if (!hasOtherAccepted) {
         if (isNowAccepted) xpAwarded = true;
 
+        // Domain questions (mcq/written) feed the unified points but not solvedProblems —
+        // their mastery is tracked separately (domainMastered), driven by self-assessment,
+        // so review must never move solvedProblems or codingLevel for them.
+        const isDomain = submission.challengeId?.type && submission.challengeId.type !== 'dsa';
         const pointsDiff = isNowAccepted ? challengePoints : -challengePoints;
         const solvedDiff = isNowAccepted ? 1 : -1;
 
         const userToUpdate = await User.findById(submission.userId._id);
         if (userToUpdate) {
           userToUpdate.points = Math.max(0, (userToUpdate.points || 0) + pointsDiff);
-          userToUpdate.solvedProblems = Math.max(0, (userToUpdate.solvedProblems || 0) + solvedDiff);
 
-          // Auto-progress coding level unless chief has manually overridden it
-          if (!userToUpdate.codingLevelOverridden) {
-            if (userToUpdate.solvedProblems >= 75) {
-              userToUpdate.codingLevel = 'Advanced';
-            } else if (userToUpdate.solvedProblems >= 25) {
-              userToUpdate.codingLevel = 'Intermediate';
-            } else {
-              userToUpdate.codingLevel = 'Beginner';
+          if (!isDomain) {
+            userToUpdate.solvedProblems = Math.max(0, (userToUpdate.solvedProblems || 0) + solvedDiff);
+
+            // Auto-progress coding level unless chief has manually overridden it
+            if (!userToUpdate.codingLevelOverridden) {
+              if (userToUpdate.solvedProblems >= 75) {
+                userToUpdate.codingLevel = 'Advanced';
+              } else if (userToUpdate.solvedProblems >= 25) {
+                userToUpdate.codingLevel = 'Intermediate';
+              } else {
+                userToUpdate.codingLevel = 'Beginner';
+              }
             }
           }
 
@@ -678,8 +687,141 @@ const getRunBatchResults = async (req, res, next) => {
   }
 };
 
+// Auto-grade an MCQ domain question server-side. The correct option is compared here
+// and revealed only in the response, never in a read. Correct → decayed award +
+// mastery; wrong → reveal answer, zero, and an escalating cooldown. See ADR-0001.
+const submitMcq = async (req, res, next) => {
+  try {
+    const { computeAward, nextAttemptAt } = require('../../../utils/domainScoring');
+    const DomainProgress = require('../challenges/DomainProgress.model');
+    const User = require('../users/User.model');
+
+    const { challengeId, selectedOption } = req.body;
+
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge || challenge.type !== 'mcq') {
+      res.status(404);
+      throw new Error('MCQ question not found');
+    }
+
+    let progress = await DomainProgress.findOne({ userId: req.user.id, challengeId });
+    if (progress?.status === 'Mastered') {
+      res.status(409);
+      throw new Error('You have already mastered this question.');
+    }
+    if (progress?.nextAttemptAt && progress.nextAttemptAt > new Date()) {
+      res.status(429);
+      throw new Error('This question is locked. Try again after the cooldown.');
+    }
+
+    const attempt = (progress?.attempts || 0) + 1;
+    const isCorrect = Number(selectedOption) === challenge.correctOption;
+    const fullPoints = challenge.points || 0;
+
+    if (isCorrect) {
+      const award = computeAward(fullPoints, attempt);
+
+      await Submission.create({
+        userId: req.user.id,
+        challengeId,
+        selectedOption,
+        status: 'Accepted',
+        awardedPoints: award,
+        reviewedAt: new Date(),
+      });
+
+      await DomainProgress.findOneAndUpdate(
+        { userId: req.user.id, challengeId },
+        { $set: { type: 'mcq', attempts: attempt, status: 'Mastered', nextAttemptAt: null, awardedPoints: award } },
+        { upsert: true }
+      );
+
+      // Points feed the unified leaderboard; domainMastered is the separate domain track.
+      const inc = { domainMastered: 1 };
+      if (award > 0) inc.points = award;
+      await User.findByIdAndUpdate(req.user.id, { $inc: inc });
+      if (award > 0) {
+        const XpLog = require('../users/XpLog.model');
+        await XpLog.create({ userId: req.user.id, amount: award, reason: 'Domain Mastered', challengeId });
+      }
+
+      const { emitEvent } = require('../../../config/socket');
+      emitEvent('leaderboard_update', { userId: req.user.id });
+      emitEvent('points_update', { userId: req.user.id, status: 'Accepted' });
+
+      return sendSuccess(res, {
+        data: {
+          correct: true,
+          awardedPoints: award,
+          status: 'Mastered',
+          correctOption: challenge.correctOption,
+          explanation: challenge.explanation,
+        },
+      });
+    }
+
+    const unlock = nextAttemptAt(fullPoints, attempt);
+    await DomainProgress.findOneAndUpdate(
+      { userId: req.user.id, challengeId },
+      { $set: { type: 'mcq', attempts: attempt, status: 'NeedsReview', nextAttemptAt: unlock } },
+      { upsert: true }
+    );
+
+    return sendSuccess(res, {
+      data: {
+        correct: false,
+        awardedPoints: 0,
+        status: 'NeedsReview',
+        correctOption: challenge.correctOption,
+        explanation: challenge.explanation,
+        nextAttemptAt: unlock,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Submit a written domain answer. Creates a Pending submission for reviewer scoring and
+// returns the model answer so the client can reveal it for self-assessment.
+const submitWritten = async (req, res, next) => {
+  try {
+    const { challengeId, answerText } = req.body;
+
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge || challenge.type !== 'written') {
+      res.status(404);
+      throw new Error('Written question not found');
+    }
+
+    const submission = await Submission.create({
+      userId: req.user.id,
+      challengeId,
+      answerText,
+      status: 'Pending',
+    });
+
+    const { emitEvent } = require('../../../config/socket');
+    emitEvent('new_submission', {
+      submissionId: submission._id,
+      username: req.user.username,
+      challengeTitle: challenge.title,
+    });
+
+    return sendSuccess(res, {
+      statusCode: 201,
+      data: { submissionId: submission._id, modelAnswer: challenge.modelAnswer },
+      message: 'Answer submitted',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   submitCode,
+  submitMcq,
+  submitWritten,
   getSubmissions,
   getMySubmissions,
   getLeaderboard,
